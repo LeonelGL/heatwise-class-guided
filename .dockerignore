@@ -1,0 +1,6 @@
+reference
+examples
+validation
+.git
+__pycache__
+.pytest_cache
