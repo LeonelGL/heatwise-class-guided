@@ -1,0 +1,9 @@
+config:
+  class: File
+  path: synthetic_config.json
+gusl:
+  class: File
+  path: gusl_synthetic.xlsx
+input_catalog:
+  class: Directory
+  path: synthetic
