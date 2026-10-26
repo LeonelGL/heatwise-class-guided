@@ -1,0 +1,153 @@
+{
+  "Comparar_candidatos_vs_GUSL_BRUSSELS(1).py": {
+    "CANDIDATES_XLSX": "C:\\Users\\Gateway\\Desktop\\PaviaPosition\\Resultados\\EndmemberCandidates\\Sepolia_urban\\Sepolia_urban_scene_candidates.xlsx",
+    "GUSL_XLSX": "C:\\Users\\Gateway\\Desktop\\PaviaPosition\\GUSL\\spectra_material_headers\\GUSL_spectra_by_material_headers.xlsx",
+    "OUTPUT_DIR": "C:\\Users\\Gateway\\Desktop\\PaviaPosition\\GUSL\\Sepolia_urban\\GUSL_ALL_comparison_PCHIP_NO_EXTRAP_FULL_SEPOLIA",
+    "CANDIDATE_SHEET": "urban_scene_candidates",
+    "GUSL_SHEETS": [
+      "BRUSSELS_APEX_GENLIB",
+      "DLR"
+    ],
+    "TOP_K": 50,
+    "TOP_X_MATERIALS_FOR_AVERAGE": 3,
+    "MATCH_RANK_METRIC": "mbdsa",
+    "CLASS_ASSIGNMENT_METRIC": "sam",
+    "TARGET_CLASS_PREFIXES": {
+      "asphalt_road": [
+        "Asphalt"
+      ],
+      "concrete": [
+        "Concrete"
+      ],
+      "metal": [
+        "Metal",
+        "Roof",
+        "Zinc"
+      ],
+      "terracota": [
+        "Terracotta",
+        "Clay",
+        "Tile"
+      ],
+      "vegetation": [
+        "Vegetation"
+      ],
+      "bitumen_aux": [
+        "Bitumen"
+      ],
+      "soil_aux": [
+        "Soil"
+      ],
+      "water_aux": [
+        "Water"
+      ]
+    },
+    "FINAL_TARGET_CLASSES": [
+      "asphalt_road",
+      "concrete",
+      "metal",
+      "terracota",
+      "vegetation"
+    ],
+    "USE_ACCEPTANCE_THRESHOLDS": false,
+    "MAX_ACCEPTED_SAM_DEG": 8.0,
+    "MAX_ACCEPTED_MBDSA": 0.12,
+    "MIN_MARGIN_TO_2ND_SAM_DEG": 1.0,
+    "MIN_MARGIN_TO_2ND_MBDSA": 0.01,
+    "ASPHALT_CONCRETE_X3_COUNT": 3,
+    "ASPHALT_CONCRETE_X3_FILENAME": "AsfaltosConcretosX3.xlsx",
+    "FINAL_X9_FILENAME_BASE": "EndmembersFinales",
+    "X3_WEIGHT_CLASS_SCORE": 0.5,
+    "X3_WEIGHT_PAIR_MARGIN": 0.35,
+    "X3_WEIGHT_DIVERSITY": 0.15,
+    "MASK3_TARGETS_UM": [
+      0.49799999594688416,
+      0.5379999876022339,
+      0.5799999833106995,
+      0.6399999856948853,
+      0.675000011920929,
+      0.7400000095367432,
+      0.8460000157356262,
+      1.1059999465942383,
+      1.2899999618530273,
+      1.7100000381469727,
+      2.180000066757202,
+      2.3299999237060547
+    ],
+    "MASK3_MAX_DELTA_UM": 0.02
+  },
+  "select_bands_paper_style(1).py": {
+    "INPUT_XLSX": "/mnt/data/input_spectra.xlsx",
+    "OUTPUT_DIR": "/mnt/data/band_selection_results",
+    "GROUP_SEPARATOR": "__",
+    "N_FINAL_BANDS": 15,
+    "BANDS_PER_COMBO": 9,
+    "TOP_N_COMBINATIONS": 20,
+    "PRESELECT_TOP_BANDS": 35,
+    "N_RANDOM_COMBINATIONS": 50000,
+    "MIN_SPACING_UM": 0.04,
+    "WL_MIN": null,
+    "WL_MAX": null,
+    "INVALID_INTERVALS_UM": [],
+    "PREPROCESS_MODE": "none",
+    "REG_EPS": 1e-06,
+    "RANDOM_SEED": 42
+  },
+  "Extraer_candidatos_Sepolia_urban_CHIME250 (1).py": {
+    "IMAGE_PATH": "C:\\Users\\Gateway\\Desktop\\PaviaPosition\\Entregables_V2\\Athens\\Sepolia\\Sepolia_CHIME_Thermopolis_v2.tif",
+    "OUTPUT_DIR": "C:\\Users\\Gateway\\Desktop\\PaviaPosition\\Resultados\\EndmemberCandidates\\Sepolia_urban",
+    "MIN_FINAL": 100,
+    "MAX_FINAL": 200,
+    "MAX_SAMPLED_PIXELS_PER_STRATUM": 100000,
+    "N_RANDOM_PROJECTIONS": 2000,
+    "TOP_PPI_CANDIDATES_PER_STRATUM": 500,
+    "N_PCA_COMPONENTS": 16,
+    "WINDOW_RADIUS": 1,
+    "SAM_NEIGHBOR_DEG": 14,
+    "MIN_SUPPORT_NEIGHBORS": 1,
+    "MIN_SUPPORT_RATIO": 0.1,
+    "MAX_LOCAL_STD": 0.2,
+    "DEDUP_SAM_DEG": 1.2,
+    "LOW_BRIGHTNESS_PCTL": 2.0,
+    "HIGH_BRIGHTNESS_PCTL": 99.8,
+    "GAPS_UM": [
+      [
+        0.996,
+        1.9714
+      ]
+    ],
+    "RGB_TARGETS_UM": [
+      0.64,
+      0.55,
+      0.47
+    ],
+    "RANDOM_SEED": 42,
+    "NDVI_URBAN_MAX": 0.3,
+    "RED_TARGET_UM": 0.675,
+    "NIR_TARGET_UM": 0.846,
+    "URBAN_BRIGHTNESS_PCTL_LOW": 2.0,
+    "URBAN_BRIGHTNESS_PCTL_HIGH": 99.0,
+    "STRATUM_QUOTAS": {
+      "dark": 12,
+      "mid": 12,
+      "bright": 16
+    },
+    "STRATUM_COLORS": {
+      "dark": [
+        1.0,
+        0.2,
+        0.2
+      ],
+      "mid": [
+        1.0,
+        1.0,
+        0.0
+      ],
+      "bright": [
+        0.0,
+        1.0,
+        1.0
+      ]
+    }
+  }
+}
