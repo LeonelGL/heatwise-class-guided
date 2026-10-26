@@ -16,7 +16,7 @@ from rasterio.warp import transform_bounds
 from scipy.interpolate import PchipInterpolator
 from sklearn.decomposition import PCA
 import yaml
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 class Configurable:
     def __init__(self, overrides=None):
@@ -1371,12 +1371,12 @@ def write_stac(out,image,wl,acquisition_datetime,source_item=None):
     item=pystac.Item('class-guided-mask3',geometry,list(bounds),dt,temporal)
     item.properties['heatwise:processor_version']=VERSION
     item.properties['heatwise:processed_at']=datetime.now(timezone.utc).isoformat()
-    for path in sorted(out.iterdir()):
+    for path in sorted(out.rglob('*')):
         if not path.is_file() or path.name.endswith('.log') or path.name in ('catalog.json','item.json'):continue
-        typ=pystac.MediaType.COG if path.suffix=='.tif' else ('application/json' if path.suffix=='.json' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if path.suffix=='.xlsx' else 'text/plain')
-        asset=pystac.Asset('./'+path.name,media_type=typ,roles=['data' if path.suffix=='.tif' else 'metadata'])
+        typ=pystac.MediaType.COG if path.suffix=='.tif' else ('application/json' if path.suffix=='.json' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if path.suffix=='.xlsx' else 'application/octet-stream' if path.suffix in ('.npz', '.npy') else 'text/csv' if path.suffix=='.csv' else 'text/plain')
+        asset=pystac.Asset('./'+path.relative_to(out).as_posix(),media_type=typ,roles=['data' if path.suffix=='.tif' else 'metadata'])
         if path==image:asset.extra_fields['bands']=[{'name':f'band_{i+1}','eo:center_wavelength':float(w)} for i,w in enumerate(wl)]
-        item.add_asset(path.stem,asset)
+        item.add_asset(path.relative_to(out).as_posix(),asset)
     catalog=pystac.Catalog('heatwise-class-guided','Scene-specific spectral preprocessing products.')
     catalog.add_item(item);catalog.set_self_href(str(out/'catalog.json'));item.set_self_href(str(out/'item.json'))
     catalog.make_all_asset_hrefs_relative();catalog.save(catalog_type=pystac.CatalogType.SELF_CONTAINED)
@@ -1441,6 +1441,22 @@ def run(image,gusl,out,cfg,wavelength_file=None,source_item=None):
     write_json(out/'selected_bands.json',details)
     write_json(out/'endmember_classes.json',{'classes':groups,'note':'FCLS output bands correspond to individual endmembers; material abundances require summing bundle members.'})
     summary={'version':VERSION,'status':'success','input_sha256':{'image':sha256(image),'gusl':sha256(gusl)},'versions':{p:importlib.metadata.version(p) for p in ['numpy','scipy','pandas','rasterio','scikit-learn','openpyxl','pystac']},'python':sys.version,'gdal':rasterio.__gdal_version__,'candidate_count':len(candidates),'usable_image_bands':int(usable.sum()),'full_metric_bands':int(common.sum()),'selected_bands':len(selected),'final_endmembers':list(final),'missing_target_classes':sorted(set(matcher.FINAL_TARGET_CLASSES)-set(groups)),'alignment_verified':True,'band_selection_method':details['method'],'scientific_accuracy_validated':False}
+    summary['input_band_count'] = int(len(wl))
+    write_json(out/'unmixing_inputs.json', {
+        'consumer': 'ESA-Heatwise/heatwise-hysupp-unmixing',
+        'input_image': image_out.name,
+        'endmembers': excel.name,
+        'wavelengths_txt': txt.name,
+        'scale_factor': 1.0,
+        'image_axis_order': ['bands', 'rows', 'columns'],
+        'endmember_axis_order': ['wavelength_rows', 'endmember_columns'],
+        'spectral_bands': len(selected),
+        'endmember_names': list(final),
+        'wavelengths_um': selected_wl.tolist(),
+        'alignment_verified': True,
+        'unmixing_executed': False,
+        'note': 'Paths are relative to this JSON. Official processor accepts GeoTIFF and XLSX/CSV, not MAT endmembers.'
+    })
     write_json(out/'run_summary.json',summary)
     write_stac(out,image_out,selected_wl,cfg['acquisition_datetime'],source_item)
     return summary
