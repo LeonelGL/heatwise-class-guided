@@ -34,3 +34,7 @@ outputs:
   products:
     type: Directory
     outputSource: prepare/products
+$namespaces:
+  s: https://schema.org/
+s:softwareVersion: 0.2.0
+s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided

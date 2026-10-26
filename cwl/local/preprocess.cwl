@@ -49,3 +49,7 @@ outputs:
     type: Directory
     outputBinding:
       glob: results
+$namespaces:
+  s: https://schema.org/
+s:softwareVersion: 0.2.0
+s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided
