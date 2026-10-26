@@ -136,6 +136,19 @@ def test_end_to_end_reproducible_and_physical_values(tmp_path):
     rb=p.run(image,source/'gusl_synthetic.xlsx',b,cfg,source_item=item)
     import json
     sa=json.loads((a/'selected_bands.json').read_text());sb=json.loads((b/'selected_bands.json').read_text())
+    handoff=json.loads((a/'unmixing_inputs.json').read_text())
+    assert ra['input_band_count']==120
+    assert handoff['spectral_bands']==15
+    assert handoff['unmixing_executed'] is False
+    assert handoff['scale_factor']==1.0
+    assert handoff['endmember_names']==ra['final_endmembers']
+    assert handoff['wavelengths_um']==sa['wavelengths_um']
+    for key in ('input_image','endmembers','wavelengths_txt'):
+        assert (a/handoff[key]).is_file()
+    item_json=json.loads((a/'item.json').read_text())
+    referenced={v['href'] for v in item_json['assets'].values()}
+    assert './diagnostics/candidates.csv' in referenced
+    assert './unmixing_inputs.json' in referenced
     assert sa==sb and ra==rb
     assert 'vegetation' in ra['final_endmembers']
     assert len(sa['wavelengths_um'])==15
