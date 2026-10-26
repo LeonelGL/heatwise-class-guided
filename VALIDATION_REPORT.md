@@ -1,38 +1,86 @@
-# Validation report — preprocessing-only 0.2.0
+# Validation report — HEATWISE class-guided 0.3.0
 
-This revision prepares inputs for the separate official ESA HEATWISE unmixing processor. It does not execute FCLS. No real-scene accuracy or ESA qualification is claimed.
+## Intended scientific contract
 
-## Implemented
+- Process scene reflectance with PPI-like candidate extraction and GUSL
+  class-guided FULL SAM/MBDSA matching.
+- Select endmembers exactly once from FULL comparisons; never rerun
+  class assignment with MASK3.
+- Export **all usable** endmember wavelengths to `selected_endmembers.xlsx`.
+- Independently optimize 15 bands to `selected_bands.json`.
+- Do not generate a reduced raster or execute the official FCLS.
+- Emit supporting diagnostics and STAC metadata referencing all existing
+  output files using relative asset paths.
 
-All original integrated extraction, FULL matching, mandatory band selection and dynamic MASK3 re-matching stages remain. Output is GeoTIFF COG + XLSX endmembers + wavelength TXT, with alignment checks. A new unmixing_inputs.json records relative paths, spectral dimensions, endmember names, wavelengths, scale factor 1.0 and unmixing_executed=false. The original image band count is recorded separately from the selected band count.
+FULL comparisons use the **global common finite-band intersection** of
+scene candidates and GUSL signatures, which may contain fewer bands than
+the exported usable endmember grid. `full_metric_bands` and
+`endmember_spectral_bands` must be examined in actual runs.
 
-The adapter, upstream runtime copy and full-chain/FCLS CWL documents were removed from this deliverable. No algorithmic FCLS replacement or MAT interface was added. The official processor.py was retrieved on 2026-10-26 to verify its actual accepted inputs.
+## Verification status (do not confuse with execution evidence)
 
-## Checks executed on 2026-10-26
+| Check | State | Evidence / required follow-up |
+| --- | --- | --- |
+| `class_guided_processor.py` in working branch | Implemented | FULL-only pipeline with version `0.3.0`; exact commit history in GitHub |
+| Unit/kernel parity tests | Test definitions updated | Run `python -m pytest tests -q` and review results for current commit |
+| Synthetic end-to-end FULL export | Test defined | `test_end_to_end_full_only_reproducible`; execute on current commit |
+| Two-product/STAC validation | Validator updated | Run `python tools/validate_outputs.py results/ci/results` |
+| CWL static validation | Workflow documents being updated | Run `python -m cwltool --validate cwl/workflow.cwl` |
+| Local CWL static validation | Local definitions being updated | Run `python -m cwltool --validate cwl/local/workflow.cwl` |
+| Docker build and execution | Not yet independently verified for 0.3.0 | Check new GitHub Actions run |
+| Real 250-band Sepolia V2 | Not validated | Supply real image and authoritative band metadata |
+| Complete real GUSL XLSX | Not validated | Check coverage/sheets and signatures |
+| `GUSL_catalog_all.csv` integration | Not implemented in current reader | Audit catalogue role; do not claim consumed |
+| Official FCLS input compatibility | Not established by current synthetic tests | Check usable wavelength grid and consumer behavior |
+| ESA platform interoperability | Not established | Acceptance on designated stage-in/stage-out environment |
 
-- Python 3.11.17 environment rebuilt from the pinned dependency lock (dependencies.log).
-- 19 unit/regression/integration tests passed (pytest_final.log), including original-kernel parity, same-seed reproduction, nodata, physical reflectance, class grouping, alignment rejection and the new handoff contract.
-- CWL Workflow static validation passed (cwl.log). Container execution was not performed during that local check; subsequent GitHub CI evidence is recorded below.
-- A fresh 250-band synthetic image and synthetic GUSL ran through all scientific stages: 67 candidates, 249 usable image bands, 248 FULL comparison bands, 15 selected bands and 9 final endmembers, including vegetation (synthetic_250_final.log and examples/output_250/run_summary.json).
-- This 250-band run used the fast synthetic configuration (1,500 combinations), not the 500,000-combination report setting. The historical 120-band synthetic output_500k remains a separately identified version 0.1.0 example; it is not Sepolia validation.
-- Official consumer input-reader compatibility and strict COG/STAC checks are recorded in official_input_contract.json and output_checks_250.json respectively. These checks do not execute the FCLS solver.
+### Historical checks from 0.2.0 — NOT current version evidence
 
-## Failed attempts and corrections
+Previous repository documentation reports 19 tests passing on v0.2.0,
+a successful Docker/containerized CWL run
+[40362481432](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40362481432),
+and a successful 250-band **synthetic** preprocessor experiment using a
+reduced number of band combinations. Those checks pertain to the former
+MASK3/reduced-raster output contract and are **not v0.3.0 validation**.
 
-The previous virtual environment's Python symlink was unavailable; a new Python 3.11 environment was built. The first edit to the configurable synthetic generator accidentally changed its default argument; this was corrected before final testing. An overlapping preliminary run collided with an existing diagnostics directory; final runs used a fresh output directory. The new input-band-count metadata initially used the spatial axis; it was corrected to len(wavelengths) and covered by a regression assertion. These were technical/metadata corrections, not changes to scientific selection criteria. Preliminary failure logs are retained where available.
+The directories `examples/output`, `examples/output_250`, and
+`examples/output_500k` may still contain old reduced-raster synthetic
+artifacts. They are retained as historical records only and are not
+current 0.3.0 exemplars.
 
-## Pending
+## Commands for v0.3.0 verification
 
-The actual Sepolia CHIME v2 250-band image, complete GUSL resource and trustworthy acquisition/wavelength metadata are required for real execution and comparison with the historical experiment. Required material coverage and scene-specific gap settings must be verified on those inputs. A published digest-pinned image and ESA target-platform interoperability remain pending. Docker build/run and containerized CWL subsequently passed in GitHub CI as recorded below. The GitHub connector returned HTTP 404; source publication is being performed through the authorized browser session. Check the repository commit history for publication status.
+```bash
+python -m pip install -r requirements-lock-python311.txt
+python -m pytest tests -q
+python -m cwltool --validate cwl/workflow.cwl
+python -m cwltool --validate cwl/local/workflow.cwl
+docker build -t heatwise/class-guided:0.3.0 .
+python -m cwltool --outdir results/ci cwl/workflow.cwl examples/job_synthetic.yml
+python tools/validate_outputs.py results/ci/results
+```
 
-## EOAP publication revision
+Check the GitHub Actions run for the actual branch commit. A green run
+establishes the synthetic packaging/tests for that revision only.
+Do not infer real-scene classification accuracy or ESA certification.
 
-All diagnostic files are now referenced as relative STAC assets, to preserve them during stage-out. Regression tests cover candidates.csv and unmixing_inputs.json references (pytest_eoap.log). CWL software version/repository metadata and docs/EOAP_READINESS.md were added. GitHub Actions uses contents:read only and is prepared to test Docker and containerized CWL; its presence is not evidence of a successful run. No new scientific changes were introduced.
+## Scientific checks required on real Sepolia CHIME v2
 
-## GitHub Actions execution (2026-10-26)
+1. Confirm original spectral centers, CRS, nodata, source scale/offset,
+   acquisition date/time and the actual gap mask for Sepolia.
+2. Verify both expected GUSL XLSX sheets and class prefixes, material
+   naming and spectral support. Clarify the separate CSV catalogue.
+3. Compare usable-image band count versus FULL common comparison-band
+   count; identify exactly which wavelengths contributed to SAM/MBDSA.
+4. Inspect selected urban spectra, endmember class counts and
+   asphalt/concrete margin diagnostics; reject physically implausible fits.
+5. Confirm the 15 selected wavelength indices/spacing and show that they
+   have no effect on the already-fixed FULL endmember signatures.
+6. Validate spectral radiometry and interpolation between the selected
+   endmembers and the original full image in the external official FCLS.
+7. Evaluate accuracy/uncertainty against available reference material
+   points and record per-class error mechanisms.
+8. Repeat from a clean environment with versioned inputs/configuration,
+   matching input checksums and output provenance.
 
-Run 40362015074 at commit 372796c passed scientific regression tests and built the Docker image, but containerized execution failed on importing Rasterio: `libexpat.so.1` was missing. Consequently the final output check failed because no products were created. This was a container dependency failure, not successful end-to-end validation. The Dockerfile now explicitly installs `libexpat1` and imports the scientific/geospatial dependencies at build time. The corrected container passed the subsequent run described below.
-
-### Corrected container: PASS
-
-[GitHub Actions run 40362481432](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40362481432), commit `babdddc8e4aa44bde80da48e4bde713ffe2ee67d`, completed successfully on 2026-10-26. It executed the scientific regression suite, CWL validation, Docker build with import smoke checks, containerized CWL on the bundled 120-band synthetic STAC input, and final output validation. Output checks confirmed spectral alignment, strict COG validity with zero errors/warnings, one schema-valid STAC Item and 22 existing relative assets (including diagnostics). This CI experiment uses the fast synthetic configuration; it does not reproduce the real Sepolia experiment or certify ESA platform interoperability. FCLS was not executed.
+No v0.3.0 scientific accuracy claim is made here.
