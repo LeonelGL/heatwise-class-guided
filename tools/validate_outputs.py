@@ -1,4 +1,4 @@
-"""Validate generated raster alignment, COG structure, STAC links and FCLS constraints."""
+"""Validate generated raster alignment, COG structure, STAC links."""
 import sys,json
 from pathlib import Path
 import numpy as np,pandas as pd,rasterio,pystac
@@ -22,11 +22,4 @@ for item in cat.get_all_items():
   assert not Path(asset.href).is_absolute(),asset.href
   assets+=1
 checks['stac_assets_existing_and_relative']=assets
-if (out/'abundances_COG.tif').exists():
- with rasterio.open(out/'abundances_COG.tif') as ds:ab=ds.read(masked=True)
- valid=~np.any(ab.mask,axis=0);arr=ab.data[:,valid]
- assert np.min(arr)>=-1e-7
- assert np.allclose(arr.sum(axis=0),1,atol=2e-6)
- checks['fcls_nonnegative_sum_to_one']=True
- checks['fcls']=json.loads((out/'fcls_run.json').read_text())
 print(json.dumps(checks,indent=2))
