@@ -1,0 +1,31 @@
+name: Validate preprocessor and EOAP
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install reproducible dependencies
+        run: python -m pip install -r requirements-lock-python311.txt
+      - name: Scientific regression tests
+        run: python -m pytest tests -q
+      - name: Validate CWL
+        run: python -m cwltool --validate cwl/workflow.cwl
+      - name: Build container
+        run: docker build -t heatwise/class-guided:0.2.0 .
+      - name: Run containerized CWL
+        run: python -m cwltool --outdir results/ci cwl/workflow.cwl examples/job_synthetic.yml
+      - name: Validate outputs
+        run: python tools/validate_outputs.py results/ci/results
