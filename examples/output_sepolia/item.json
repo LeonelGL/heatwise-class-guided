@@ -1,0 +1,278 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [],
+  "id": "class-guided-mask3",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          23.69822602923648,
+          37.98515943601646
+        ],
+        [
+          23.7290158923408,
+          37.98515943601646
+        ],
+        [
+          23.7290158923408,
+          38.01555423573789
+        ],
+        [
+          23.69822602923648,
+          38.01555423573789
+        ],
+        [
+          23.69822602923648,
+          37.98515943601646
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    23.69822602923648,
+    37.98515943601646,
+    23.7290158923408,
+    38.01555423573789
+  ],
+  "properties": {
+    "start_datetime": "2009-07-18T00:00:00Z",
+    "end_datetime": "2009-07-18T23:59:59.999999Z",
+    "heatwise:acquisition_date_precision": "day",
+    "heatwise:acquisition_date_source": "Date supplied by data owner; time of acquisition unavailable. UTC day bounds are a catalog convention, not observed acquisition times.",
+    "heatwise:processor_version": "0.2.0",
+    "heatwise:processed_at": "2026-10-26T17:07:54.066134+00:00",
+    "datetime": null
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "./catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "parent",
+      "href": "./catalog.json",
+      "type": "application/json"
+    }
+  ],
+  "assets": {
+    "EndmembersFinales_mask3.xlsx": {
+      "href": "./EndmembersFinales_mask3.xlsx",
+      "type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "Endmembers_FULL.xlsx": {
+      "href": "./Endmembers_FULL.xlsx",
+      "type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "band_selection.xlsx": {
+      "href": "./band_selection.xlsx",
+      "type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/FULL_average_summary.csv": {
+      "href": "./diagnostics/FULL_average_summary.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/FULL_bundle_selection.csv": {
+      "href": "./diagnostics/FULL_bundle_selection.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/FULL_candidates_used.csv": {
+      "href": "./diagnostics/FULL_candidates_used.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/FULL_class_assignments.csv": {
+      "href": "./diagnostics/FULL_class_assignments.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/FULL_metrics.npz": {
+      "href": "./diagnostics/FULL_metrics.npz",
+      "type": "application/octet-stream",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/MASK3_average_summary.csv": {
+      "href": "./diagnostics/MASK3_average_summary.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/MASK3_bundle_selection.csv": {
+      "href": "./diagnostics/MASK3_bundle_selection.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/MASK3_candidates_used.csv": {
+      "href": "./diagnostics/MASK3_candidates_used.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/MASK3_class_assignments.csv": {
+      "href": "./diagnostics/MASK3_class_assignments.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/MASK3_metrics.npz": {
+      "href": "./diagnostics/MASK3_metrics.npz",
+      "type": "application/octet-stream",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/candidates.csv": {
+      "href": "./diagnostics/candidates.csv",
+      "type": "text/csv",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "diagnostics/candidates.npz": {
+      "href": "./diagnostics/candidates.npz",
+      "type": "application/octet-stream",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "effective_config.json": {
+      "href": "./effective_config.json",
+      "type": "application/json",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "endmember_classes.json": {
+      "href": "./endmember_classes.json",
+      "type": "application/json",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "hyperspectral_mask3_COG.tif": {
+      "href": "./hyperspectral_mask3_COG.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "bands": [
+        {
+          "name": "band_1",
+          "eo:center_wavelength": 0.463
+        },
+        {
+          "name": "band_2",
+          "eo:center_wavelength": 0.5134
+        },
+        {
+          "name": "band_3",
+          "eo:center_wavelength": 0.5638
+        },
+        {
+          "name": "band_4",
+          "eo:center_wavelength": 0.6394
+        },
+        {
+          "name": "band_5",
+          "eo:center_wavelength": 0.7066
+        },
+        {
+          "name": "band_6",
+          "eo:center_wavelength": 0.7486
+        },
+        {
+          "name": "band_7",
+          "eo:center_wavelength": 0.7906
+        },
+        {
+          "name": "band_8",
+          "eo:center_wavelength": 0.8662
+        },
+        {
+          "name": "band_9",
+          "eo:center_wavelength": 0.9082
+        },
+        {
+          "name": "band_10",
+          "eo:center_wavelength": 0.967
+        },
+        {
+          "name": "band_11",
+          "eo:center_wavelength": 2.0002
+        },
+        {
+          "name": "band_12",
+          "eo:center_wavelength": 2.0758
+        },
+        {
+          "name": "band_13",
+          "eo:center_wavelength": 2.1514
+        },
+        {
+          "name": "band_14",
+          "eo:center_wavelength": 2.2018
+        },
+        {
+          "name": "band_15",
+          "eo:center_wavelength": 2.2606
+        }
+      ],
+      "roles": [
+        "data"
+      ]
+    },
+    "mask3_wavelengths_um.txt": {
+      "href": "./mask3_wavelengths_um.txt",
+      "type": "text/plain",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "run_summary.json": {
+      "href": "./run_summary.json",
+      "type": "application/json",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "selected_bands.json": {
+      "href": "./selected_bands.json",
+      "type": "application/json",
+      "roles": [
+        "metadata"
+      ]
+    },
+    "unmixing_inputs.json": {
+      "href": "./unmixing_inputs.json",
+      "type": "application/json",
+      "roles": [
+        "metadata"
+      ]
+    }
+  }
+}

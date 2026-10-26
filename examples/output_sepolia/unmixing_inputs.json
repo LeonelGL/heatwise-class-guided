@@ -1,0 +1,47 @@
+{
+  "consumer": "ESA-Heatwise/heatwise-hysupp-unmixing",
+  "input_image": "hyperspectral_mask3_COG.tif",
+  "endmembers": "EndmembersFinales_mask3.xlsx",
+  "wavelengths_txt": "mask3_wavelengths_um.txt",
+  "scale_factor": 1.0,
+  "image_axis_order": [
+    "bands",
+    "rows",
+    "columns"
+  ],
+  "endmember_axis_order": [
+    "wavelength_rows",
+    "endmember_columns"
+  ],
+  "spectral_bands": 15,
+  "endmember_names": [
+    "asphalt_road_1",
+    "asphalt_road_2",
+    "asphalt_road_3",
+    "concrete_1",
+    "concrete_2",
+    "concrete_3",
+    "terracota",
+    "vegetation"
+  ],
+  "wavelengths_um": [
+    0.463,
+    0.5134,
+    0.5638,
+    0.6394,
+    0.7066,
+    0.7486,
+    0.7906,
+    0.8662,
+    0.9082,
+    0.967,
+    2.0002,
+    2.0758,
+    2.1514,
+    2.2018,
+    2.2606
+  ],
+  "alignment_verified": true,
+  "unmixing_executed": false,
+  "note": "Paths are relative to this JSON. Official processor accepts GeoTIFF and XLSX/CSV, not MAT endmembers."
+}
