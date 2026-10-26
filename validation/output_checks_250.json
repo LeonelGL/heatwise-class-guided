@@ -1,0 +1,12 @@
+{
+  "spectral_alignment": true,
+  "cog": {
+    "hyperspectral_mask3_COG.tif": {
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    }
+  },
+  "stac_schema_validated_items": 1,
+  "stac_assets_existing_and_relative": 10
+}
