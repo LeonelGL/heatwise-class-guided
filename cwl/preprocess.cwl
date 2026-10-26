@@ -8,7 +8,7 @@ baseCommand:
 - python3
 requirements:
   DockerRequirement:
-    dockerPull: heatwise/class-guided:0.1.0
+    dockerPull: heatwise/class-guided:0.2.0
 arguments:
 - position: 0
   valueFrom: $(inputs.processor.path)
@@ -51,3 +51,8 @@ outputs:
     type: Directory
     outputBinding:
       glob: results
+
+$namespaces:
+  s: https://schema.org/
+s:softwareVersion: "0.2.0"
+s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided
