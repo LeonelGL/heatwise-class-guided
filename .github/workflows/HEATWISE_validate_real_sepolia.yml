@@ -1,0 +1,203 @@
+name: HEATWISE v0.3 - Real Sepolia scientific preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      full_band_search:
+        description: 'Run all 500000 band combinations (otherwise 2000 for a fast initial test)'
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sepolia-full:
+    name: Real Sepolia FULL-only processing
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      N_COMBINATIONS: ${{ inputs.full_band_search && '500000' || '2000' }}
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          lfs: true
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements-lock-python311.txt
+
+      - name: Verify genuine Sepolia inputs and previous FULL reference
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd
+          import rasterio
+
+          raster = Path('examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif')
+          gusl = Path('examples/resources/GUSL_spectra_by_material_headers.xlsx')
+          previous = Path('examples/output_sepolia/Endmembers_FULL.xlsx')
+          for path in (raster, gusl, previous):
+              if not path.is_file():
+                  raise FileNotFoundError(path)
+              print(f'[INPUT] {path}: {path.stat().st_size:,} bytes')
+          with rasterio.open(raster) as src:
+              print(f'[SCENE] {src.count} bands, {src.width} x {src.height} pixels, {src.crs}')
+              if src.count != 250:
+                  raise AssertionError(f'Expected Sepolia v2 with 250 bands; found {src.count}')
+              first = src.tags(1).get('wavelength_um')
+              if first is None:
+                  raise AssertionError('Expected wavelength_um in image band metadata')
+          sheets = pd.ExcelFile(gusl).sheet_names
+          print('[GUSL] Sheets:', sheets)
+          for sheet in ('BRUSSELS_APEX_GENLIB', 'DLR'):
+              if sheet not in sheets:
+                  raise AssertionError(f'Missing required GUSL sheet: {sheet}')
+          reference = pd.read_excel(previous)
+          print('[HISTORICAL FULL] Rows:', len(reference), 'Endmembers:', list(reference.columns[1:]))
+          PY
+
+      - name: Run v0.3.0 on real Sepolia (NO FCLS, NO MASK3)
+        shell: bash
+        run: |
+          python class_guided_processor.py \
+            --input-catalog examples/sepolia \
+            --gusl examples/resources/GUSL_spectra_by_material_headers.xlsx \
+            --config examples/config_sepolia_report.json \
+            --n-random-combinations "$N_COMBINATIONS" \
+            --output-dir results/sepolia_full
+
+      - name: Validate FULL-only scientific products and STAC
+        run: python tools/validate_outputs.py results/sepolia_full
+
+      - name: Check FULL endmember parity and official-FCLS spectral handoff
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import numpy as np
+          import pandas as pd
+          import rasterio
+
+          output = Path('results/sepolia_full')
+          summary = json.loads((output / 'run_summary.json').read_text())
+          selected = json.loads((output / 'selected_bands.json').read_text())
+          current = pd.read_excel(output / 'selected_endmembers.xlsx')
+          reference = pd.read_excel('examples/output_sepolia/Endmembers_FULL.xlsx')
+
+          assert summary['version'] == '0.3.0'
+          assert summary['endmember_selection'] == 'FULL'
+          assert summary['mask3_reselection'] is False
+          assert summary['unmixing_executed'] is False
+          assert summary['input_band_count'] == 250
+          assert summary['selected_bands'] == 15
+          assert len(selected['wavelengths_um']) == 15
+
+          # The original FULL scientific algorithm should give the same endmembers
+          # regardless of the number of sampled band combinations.
+          if list(current.columns) != list(reference.columns):
+              raise AssertionError(
+                  'FULL endmember identities differ from the original real-scene FULL result: '
+                  f'new={list(current.columns)}, original={list(reference.columns)}'
+              )
+          if current.shape != reference.shape:
+              raise AssertionError(
+                  f'FULL endmember shape changed: new={current.shape}, original={reference.shape}'
+              )
+          np.testing.assert_allclose(
+              current.to_numpy(dtype=float), reference.to_numpy(dtype=float),
+              rtol=1e-5, atol=1e-6,
+              err_msg='FULL endmembers differ from historical FULL output',
+          )
+          print('[PASS] FULL endmembers match historical real-Sepolia FULL result.')
+          print('[SUMMARY] Image bands:', summary['input_band_count'])
+          print('[SUMMARY] Usable/exported endmember bands:', summary['endmember_spectral_bands'])
+          print('[SUMMARY] GUSL FULL comparison bands:', summary['full_metric_bands'])
+          print('[SUMMARY] Endmembers:', summary['final_endmembers'])
+          print('[SUMMARY] Independent selected band wavelengths (um):', selected['wavelengths_um'])
+
+          # Reproduce only the spectral-band alignment rules used by the official
+          # ESA-Heatwise FCLS processor, not an FCLS abundance calculation.
+          with rasterio.open('examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif') as src:
+              raw = src.read().astype(np.float32)
+              image_wl = np.asarray([
+                  float(src.tags(b)['wavelength_um'])
+                  for b in range(1, src.count + 1)
+              ])
+              if src.nodata is not None:
+                  raw[raw == src.nodata] = np.nan
+              scales = np.asarray(src.scales, dtype=float)
+              offsets = np.asarray(src.offsets, dtype=float)
+              if not np.allclose(scales, 1) or not np.allclose(offsets, 0):
+                  print('::warning::Source TIFF scale/offset is not identity. '
+                        'Class-guided applies these metadata but official FCLS '
+                        'requires an explicit radiometric-scale assessment.')
+
+          signature_wl = current['wavelength_um'].to_numpy(dtype=float)
+          signatures = current.iloc[:, 1:].to_numpy(dtype=float)
+          e_interp = np.column_stack([
+              np.interp(image_wl, signature_wl, signatures[:, j], left=np.nan, right=np.nan)
+              for j in range(signatures.shape[1])
+          ])
+          fcls_band_mask = (
+              np.isfinite(raw).any(axis=(1, 2))
+              & np.isfinite(e_interp).all(axis=1)
+          )
+          n_fcls_bands = int(fcls_band_mask.sum())
+          print('[FCLS PREFLIGHT] Spectral bands retained by FCLS rules:', n_fcls_bands)
+          if n_fcls_bands < 2:
+              raise AssertionError('Too few bands for official FCLS spectral alignment')
+          pixels_ok = int(np.all(np.isfinite(raw[fcls_band_mask]), axis=0).sum())
+          print('[FCLS PREFLIGHT] Finite pixels under FCLS band mask:', pixels_ok)
+          if pixels_ok == 0:
+              raise AssertionError('No valid pixels after official FCLS spectral-band selection')
+
+          effective = json.loads((output / 'effective_config.json').read_text())
+          gap_mask = np.zeros(len(image_wl), dtype=bool)
+          for low, high in effective['extraction']['GAPS_UM']:
+              gap_mask |= (image_wl >= low) & (image_wl <= high)
+          n_gap_used = int((fcls_band_mask & gap_mask).sum())
+          print('[FCLS PREFLIGHT] Bands in declared exclusion gaps that FCLS would use:', n_gap_used)
+          if n_gap_used:
+              print('::warning::Official FCLS would reintroduce some excluded gaps '
+                    'by interpolating across internal wavelength intervals. '
+                    'This scientific mismatch must be resolved before ESA delivery.')
+          report = {
+              'source': 'Real Sepolia CHIME-like v2 and uploaded GUSL XLSX',
+              'processor_version': summary['version'],
+              'image_bands': summary['input_band_count'],
+              'usable_endmember_bands': summary['endmember_spectral_bands'],
+              'full_comparison_bands': summary['full_metric_bands'],
+              'endmembers': summary['final_endmembers'],
+              'independent_selected_band_count': summary['selected_bands'],
+              'full_endmembers_match_historical_reference': True,
+              'fcls_spectral_preflight_bands': n_fcls_bands,
+              'fcls_spectral_preflight_finite_pixels': pixels_ok,
+              'excluded_gap_bands_potentially_reintroduced_by_fcls': n_gap_used,
+              'fcls_executed': False,
+              'accuracy_validated': False,
+          }
+          Path('results/sepolia_fcls_preflight.json').write_text(json.dumps(report, indent=2) + '\n')
+          PY
+
+      - name: Upload results for review (even if a check fails)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sepolia-v03-real-${{ github.run_id }}
+          path: |
+            results/sepolia_full/
+            results/sepolia_fcls_preflight.json
+          if-no-files-found: warn
+          retention-days: 14
