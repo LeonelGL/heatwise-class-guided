@@ -1,19 +1,34 @@
-# EOAP readiness — review against OGC 20-089r1
+# EOAP readiness — HEATWISE class-guided 0.3.0
 
-Reference: https://docs.ogc.org/bp/20-089r1.html (reviewed 2026-10-26). This is a Best Practice, not an ESA certification. The platform owner must confirm project-specific acceptance criteria.
+This is an engineering readiness checklist, **not ESA certification**.
+The target operator must confirm the exact acceptance criteria.
+Prior GitHub Actions pass evidence for **0.2.0** is not evidence that
+**0.3.0** has passed.
 
-| Requirement / delivery concern | Implementation and evidence | Remaining action |
-|---|---|---|
-| Command-line application | Python 3.11 CLI; explicit arguments and failure exit status | Real-scene execution |
-| Container | Dockerfile and pinned Python dependencies; build/run passed CI 40362481432 | Base digest pinning |
-| Application Package | CWL Workflow plus CommandLineTool, baseCommand, DockerRequirement | Target-platform runner acceptance (containerized cwltool passed CI) |
-| Input descriptions | id, label, doc, typed input catalog, GUSL/config Files | Platform mapping of stage-in |
-| STAC staged input | Local catalog.json with Item/COG; GUSL separate | Remote staging by target platform |
-| STAC staged output | catalog.json, Item with footprint/acquisition time, relative assets including diagnostics | Platform stage-out acceptance |
-| Spectral interface | COG + XLSX + TXT; no MAT; alignment checked | Real Sepolia v2 and complete GUSL |
-| Reproducibility | Seed, effective configuration, versions, hashes, original-source tests | Validate full real experiment |
-| Docker image reference | heatwise/class-guided:0.2.0 local tag | Publish authorized registry image, pin digest and update CWL |
-| Provenance/license | NOTICE.md, original sources, methodology changes | Owner-approved release license; GUSL redistribution/access conditions |
-| Automated validation | Read-only GitHub Actions runs tests, Docker and containerized CWL | Run 40362481432 passed; repeat on target platform |
+| Concern | 0.3.0 implementation | Still to validate / complete |
+| --- | --- | --- |
+| Processing scope | FULL-only class-guided endmember extraction and independent band optimization | Compare with real Sepolia/GUSL reference method |
+| Scientific data output | `selected_endmembers.xlsx` and `selected_bands.json` | Full real-scene dimensional/reflectance consistency |
+| Endmember matching | SAM/MBDSA on global common finite spectral intersection | Audit which and how many bands contribute on real data |
+| Preprocessor CLI | Python 3.11; explicit image/STAC, GUSL, configuration, wavelengths and output arguments | Actual stage-in command run |
+| Input contract | STAC single Item, locally staged COG; external GUSL XLSX | Real source metadata, source library coverage |
+| Output contract | STAC catalog + Item with two scientific assets and relative diagnostic assets | Target platform stage-out validation |
+| CWL | Workflow and CommandLineTool with typed inputs | Re-run cwltool validation and containerized CWL for 0.3.0 |
+| Docker | Python 3.11 pinned dependencies; local `heatwise/class-guided:0.3.0` tag | Successful v0.3.0 Docker build; publish approved image/digest |
+| Python regression | Original-kernel parity and FULL-only synthetic tests defined | Verify green current-branch CI run and logs |
+| Reproducibility | Random seed, config, versions, input SHA-256, wavelength and band indices, diagnostics | Validate complete real experiment |
+| Handoff to official FCLS | Endmember XLSX and original full raster expected; band JSON independent | Check wavelength interpolation, missing bands and scale on real image |
+| Provenance/license | `reference/` originals, `docs/PROVENANCE.json`, `NOTICE.md` | Agree publication license, third-party GUSL rights |
+| Spectral provenance | Real wavelengths required; no fabricated sensor centers | Confirm Sepolia V2 wavelength grid and acquisition time |
+| Scientific accuracy | Synthetic tests only for this package | Ground-truth evaluation and per-material uncertainty |
+| Repository integrity | `MANIFEST_SHA256.json` | Regenerate after all final code/docs commits |
 
-No deployment to the official ESA repository or image publication is performed by this repository's CI. CI has contents:read and does not push commits or publish packages. A successful CI run still does not establish real-scene scientific reproduction or ESA target-platform acceptance.
+**Historical evidence (0.2.0 only):** GitHub Actions run
+[40362481432](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40362481432)
+was reported as successful for the previous reduced-COG/MASK3-based
+interface. It must not be represented as v0.3.0 acceptance.
+
+Open issues include the global finite intersection across GUSL signatures,
+the unparsed `GUSL_catalog_all.csv`, the inability to infer a precise Sepolia
+acquisition timestamp from only its reported date (2009-07-18), and the
+need to confirm endmember-to-full-raster compatibility with FCLS.
