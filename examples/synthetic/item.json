@@ -1,0 +1,65 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [],
+  "id": "class-guided-mask3",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          23.61936565223514,
+          37.99733893941999
+        ],
+        [
+          23.636818999859273,
+          37.99733893941999
+        ],
+        [
+          23.636818999859273,
+          38.00852468309198
+        ],
+        [
+          23.61936565223514,
+          38.00852468309198
+        ],
+        [
+          23.61936565223514,
+          37.99733893941999
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    23.61936565223514,
+    37.99733893941999,
+    23.636818999859273,
+    38.00852468309198
+  ],
+  "properties": {
+    "heatwise:processor_version": "0.1.0",
+    "heatwise:processed_at": "2026-10-23T23:35:04.247290+00:00",
+    "datetime": "2020-07-01T10:00:00Z"
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "./catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "parent",
+      "href": "./catalog.json",
+      "type": "application/json"
+    }
+  ],
+  "assets": {
+    "image": {
+      "href": "./scene_COG.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "roles": [
+        "data"
+      ]
+    }
+  }
+}
