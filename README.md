@@ -1,70 +1,169 @@
-# HEATWISE class-guided preprocessor
+# HEATWISE class-guided endmember and band preprocessor
 
-This project prepares scene-specific endmembers and a spectrally aligned image for the existing ESA HEATWISE unmixing package. It does not run FCLS or produce abundance/classification maps.
+**Version 0.3.0 — FULL endmember selection, independent spectral band selection**
 
-## Processing
+This repository implements a scene-specific, ground-truth-independent workflow
+for hyperspectral urban material characterization. It prepares two scientific
+products for a CHIME-like scene. It **does not perform FCLS unmixing**.
 
-CHIME-like image + external GUSL XLSX → stratified PCA/PPI-like candidates → FULL SAM/MBDSA matching and endmember selection → automatic discriminative band selection → MASK3 re-matching of all candidates → aligned image and endmembers.
+## Scientific methodology
 
-The reference band configuration is 100 preselected bands, 15 bands per combination, 500,000 sampled combinations, 100 retained best combinations, 15 final bands and 0.040 µm minimum spacing. Bands are selected from the input scene, never from a fixed Sepolia list. Original algorithms and explicit changes are documented in `docs/CHANGES.md`.
+1. Read an input hyperspectral GeoTIFF/COG with valid wavelength centers,
+   reflectance scale/offset, georeferencing and nodata masks.
+2. Detect usable spectral bands; exclude explicitly configured gaps and bands
+   with inadequate finite-data coverage.
+3. Extract scene-based candidate endmembers using PCA, stratified PPI-like
+   projections, local spectral support, medoid representation and deduplication.
+4. Interpolate configured GUSL spectral-library sheets onto the usable scene
+   wavelengths with PCHIP, without endpoint extrapolation.
+5. **Match candidates to GUSL using FULL spectra**, with SAM/MBDSA and
+   class-guided material selection. Asphalt and concrete may retain multiple
+   scene endmembers; some other material classes are averages of candidates.
+6. Export the selected endmembers with **all usable spectral wavelengths**.
+7. Independently optimize 15 discriminative bands from the already-selected
+   FULL endmembers. **Do not rerun matching or alter endmembers**.
 
-## Output contract
+The default report configuration evaluates 500,000 15-band combinations drawn
+from 100 preselected bands and then recommends 15 wavelengths subject to at least
+0.040 µm spacing. The scene determines the wavelengths dynamically.
 
-The official `ESA-Heatwise/heatwise-hysupp-unmixing` processor checked on 2026-10-26 reads a multiband GeoTIFF and an XLSX/CSV endmember table. It does not accept MAT endmember files. Therefore this project exports:
+**Important spectral limitation:** the current FULL SAM/MBDSA kernel uses a
+single global common-finite-band intersection across retained candidates and
+library signatures. `full_metric_bands` can be smaller than the number of
+usable image bands, although final endmember signatures retain the complete
+usable scene grid. This limitation is documented and must be assessed on real
+Sepolia/GUSL inputs.
 
-- `hyperspectral_mask3_COG.tif`: selected bands, physical reflectance, source spatial grid and CRS.
-- `EndmembersFinales_mask3.xlsx`: wavelength rows and one column per endmember, including multiple asphalt/concrete signatures.
-- `mask3_wavelengths_um.txt`: exactly the image wavelengths in spectral order.
-- `unmixing_inputs.json`: relative input paths, dimensions, wavelength vector and scale factor for the separate unmixing processor.
-- `selected_bands.json`, `Endmembers_FULL.xlsx`, `band_selection.xlsx`, diagnostics and execution metadata.
-- `catalog.json` and `item.json`: STAC catalog and product assets.
+The word FULL distinguishes this workflow from the historical second-pass
+MASK3 method. There is **no MASK3 re-matching** in version 0.3.0.
 
-The input may have 250 bands; the default final image has 15 selected bands. Every final endmember has the same 15 spectral samples. The program verifies alignment before declaring success. No MAT format is invented for a different HySUPP interface.
+## Scientific outputs: exactly two
 
-## Install and run
+| File | Description | Consumer |
+| --- | --- | --- |
+| `selected_endmembers.xlsx` | Wavelengths in µm (first column) and one reflectance column per FULL-selected endmember; all usable scene wavelengths | External official FCLS processor |
+| `selected_bands.json` | The independently optimized 15 wavelengths, original raster band indices (zero- and one-based), selection indices and methodological diagnostics | Spectral band analysis; **not an FCLS input** |
+
+A separate `diagnostics/` folder, configuration, run summary and a
+`catalog.json`/`item.json` STAC catalog support reproducibility and ESA-style
+stage-out. These are **supporting files, not additional scientific products**.
+
+The output directory contains **no reduced image**, no MASK3 endmember
+spreadsheet, no `.mat` data, and no abundance/classification rasters.
+The input raster is **not copied or modified**.
+
+## Installation
+
+Python 3.11 is recommended. Use the pinned dependency lock:
 
 ```bash
 python3.11 -m venv .venv
-# Linux: source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+# Linux/macOS:
+source .venv/bin/activate
+# Windows PowerShell:
+# .venv\Scripts\Activate.ps1
 python -m pip install -r requirements-lock-python311.txt
-python class_guided_processor.py --image /data/Sepolia_CHIME_v2.tif --gusl /data/GUSL.xlsx --config examples/config_sepolia_report.json --output-dir results/sepolia
 ```
 
-The filenames above are placeholders for the actual inputs, not bundled real data. For direct raster input, first set `acquisition_datetime` in the configuration to the true image acquisition datetime with timezone. Do not use the processing date. If the raster lacks wavelengths, add `--wavelengths /data/wavelengths_um.txt` (one center per original band). Check the configured GUSL sheets, material prefixes and invalid spectral interval against the actual Sepolia v2 data. Do not infer sensor metadata merely from a filename or a 250-band count.
+## Usage with the real scene
 
-Alternatively use `--input-catalog /data/staged_catalog` instead of `--image`; the acquisition time then comes from the input STAC Item. The staged catalog must contain one Item and one COG asset (or use `--asset-key`). GUSL is a separate explicit input. Outputs must go into a new or empty directory. Original inputs are not modified.
-
-## Hand off to the official unmixing project
-
-In the separate official unmixing installation, use:
+Example (adjust paths; files are not included in the repository):
 
 ```bash
-python processor.py --input-image /absolute/results/sepolia/hyperspectral_mask3_COG.tif --endmembers /absolute/results/sepolia/EndmembersFinales_mask3.xlsx --wavelengths-txt /absolute/results/sepolia/mask3_wavelengths_um.txt --scale-factor 1.0 --output-dir /absolute/results/sepolia_unmixing
+python class_guided_processor.py \
+  --image /data/Sepolia_CHIME_v2.tif \
+  --gusl /data/GUSL_spectra_by_material_headers.xlsx \
+  --config examples/config_sepolia_report.json \
+  --output-dir results/sepolia
 ```
 
-This project does not bundle or replace the official FCLS implementation. Scale factor 1.0 is intentional: declared input scale/offset have already been applied to physical reflectance in the reduced image.
+For direct `--image` input, set `acquisition_datetime` in the configuration to
+the actual acquisition timestamp **with timezone**, not to processing time.
+The reported Sepolia acquisition **date** is 2009-07-18; the precise acquisition
+time/timezone must be verified rather than guessed.
 
-## Synthetic tests and CWL
+If band centers are not in the raster metadata, supply:
+
+```bash
+--wavelengths /data/sepolia_original_wavelengths_um.txt
+```
+
+The file must contain one wavelength center in **micrometers** for each
+original image band, in original raster order. Image and endmember wavelengths
+are sorted consistently during processing.
+
+To use a staged STAC input:
+
+```bash
+python class_guided_processor.py \
+  --input-catalog /data/staged_catalog \
+  --gusl /data/GUSL_spectra_by_material_headers.xlsx \
+  --config examples/config_sepolia_report.json \
+  --output-dir results/sepolia
+```
+
+The STAC catalog must describe one Item with a locally staged COG asset.
+Choose a new or empty output directory.
+
+**GUSL source convention:** the current reader uses the configured
+`BRUSSELS_APEX_GENLIB` and `DLR` sheets from the XLSX. The separate
+`GUSL_catalog_all.csv` is **not yet parsed by this executable**. Its potential
+role in materials mapping must be audited before claiming both resources are
+integrated. Verify sheet names, material prefixes, gap intervals and image
+wavelengths against the real Sepolia inputs.
+
+## Scientific interface with the ESA HEATWISE unmixing package
+
+The external repository
+[ESA-Heatwise/heatwise-hysupp-unmixing](https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing)
+remains **unchanged**. It accepts the original input image and the exported
+endmember table. The independently selected 15-band JSON is **not passed** to
+the official FCLS processor.
+
+Do **not** pass a MASK3 raster, do **not** set a fabricated scale factor, and do
+**not** assume all sensor bands are usable. Spectral alignment, interpolation
+behaviour and radiometric scale must be verified with the actual original
+image and the official FCLS interface before claiming real-scene compatibility.
+
+## Synthetic test and EOAP/CWL
 
 ```bash
 python examples/make_synthetic.py
-python class_guided_processor.py --input-catalog examples/synthetic --gusl examples/gusl_synthetic.xlsx --config examples/synthetic_config.json --output-dir results/synthetic
+python class_guided_processor.py --input-catalog examples/synthetic \
+  --gusl examples/gusl_synthetic.xlsx \
+  --config examples/synthetic_config.json \
+  --output-dir results/synthetic
+python tools/validate_outputs.py results/synthetic
 python -m pytest tests -q
 python -m cwltool --validate cwl/workflow.cwl
+python -m cwltool --validate cwl/local/workflow.cwl
 ```
 
-`cwl/workflow.cwl` runs preprocessing only; `cwl/preprocess.cwl` is its CommandLineTool. GUSL is supplied as a File, and the staged input catalog as a Directory. Docker image reference `heatwise/class-guided:0.2.0` is a local build tag, not a published image:
+Build a local image (the tag is not evidence of a published registry image):
 
 ```bash
-docker build -t heatwise/class-guided:0.2.0 .
+docker build -t heatwise/class-guided:0.3.0 .
 python -m cwltool --outdir results/cwl cwl/workflow.cwl examples/job_synthetic.yml
+python tools/validate_outputs.py results/cwl/results
 ```
 
-See `VALIDATION_REPORT.md` for executed checks and limits. Docker and containerized CWL passed GitHub Actions run 40362481432. Real Sepolia v2/GUSL reproduction and ESA target-platform acceptance remain pending.
+`cwl/workflow.cwl` is the container workflow; `cwl/local/workflow.cwl`
+runs without Docker. GitHub Actions tests both declarations and runs the
+containerized synthetic workflow. It does not execute official FCLS.
 
-`examples/output_250` is the fresh version 0.2.0 preprocessing example for a **synthetic** 250-band input. Its generator supports `make(path, band_count=250)`. It is not the real Sepolia sensor grid. `examples/output_500k` is a retained historical synthetic 0.1.0 preprocessing example using the larger band search. Neither is a real-scene accuracy validation.
+The `examples/output`, `examples/output_250`, and `examples/output_500k`
+folders, if present, are **historical synthetic outputs of the old interface**
+and must **not** be treated as examples generated by version 0.3.0.
+Their legacy MASK3 content is not part of the current output contract.
 
-## Delivery status
+## Validation and release status
 
-See [EOAP readiness](docs/EOAP_READINESS.md) and [validation report](VALIDATION_REPORT.md). The read-only GitHub Actions workflow tests Python, CWL, Docker and output integrity. A green run does not replace real Sepolia/GUSL validation or ESA platform acceptance.
+See `VALIDATION_REPORT.md`, `docs/CHANGES.md`, `docs/EOAP.md` and
+`docs/EOAP_READINESS.md` for reproducibility, algorithmic limitations and
+ESA-facing packaging requirements.
+
+Previously reported CI successes refer to **version 0.2.0**, not to this
+new workflow. Tests/CI must be rerun after every update. Validation with the
+actual Sepolia CHIME-like v2 scene and complete GUSL resources, a registry
+image pinned by digest, platform stage-in/stage-out and scientific accuracy
+evaluation remain pending. No ESA qualification is claimed.
