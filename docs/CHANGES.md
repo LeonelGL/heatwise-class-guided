@@ -163,3 +163,7 @@ not equivalent to dominant summed material. Additional material abundance sums a
 material classification are exported with explicit mappings; original endmember
 outputs remain available. Ill-conditioning of similar bundles remains a scientific
 risk and requires real-data assessment.
+
+## Version 0.2.0: preprocessing-only scope
+
+The scientific stages are unchanged. FCLS execution and its adapter/snapshot/CWL branch are no longer part of this application. Outputs are the official consumer's GeoTIFF + XLSX + TXT inputs; no MAT schema is invented. The processor now writes unmixing_inputs.json and reports the original band count. The real 250-band Sepolia v2 image and complete GUSL have not been supplied for execution.
