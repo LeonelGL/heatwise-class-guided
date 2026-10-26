@@ -11,12 +11,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import rasterio
-from rasterio.shutil import copy as rio_copy
 from rasterio.warp import transform_bounds
 from scipy.interpolate import PchipInterpolator
 from sklearn.decomposition import PCA
 import yaml
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 class Configurable:
     def __init__(self, overrides=None):
@@ -654,9 +653,8 @@ class Matching(Configurable):
               "sam"   -> menor SAM
     
         Importante:
-        - La selección puede venir de FULL o MASK3.
-        - El promedio se hace siempre usando scene_full_for_average, es decir,
-          las firmas completas, no las firmas recortadas por MASK3.
+        - La selección y el promedio utilizan candidatos de FULL.
+        - El promedio conserva todas las bandas utilizables de la escena.
         """
         name_to_idx = {name: i for i, name in enumerate(scene_names)}
         metric = str(self.MATCH_RANK_METRIC).strip().lower()
@@ -1212,14 +1210,16 @@ def extract_candidates(cube, wl, cfg):
 
 
 def match_candidates(m, X, wl, names, library, library_names, mode, output, export):
-    """Reselect classes and bundles in the supplied metric space (FULL/MASK3)."""
+    """Class-guided selection using the FULL common finite spectral domain."""
+    if mode != 'FULL':
+        raise ValueError('Endmember selection only supports FULL, not MASK3.')
     valid_lib=np.any(np.isfinite(library),axis=1)
     library=library[valid_lib]
     library_names=[n for n,ok in zip(library_names,valid_lib) if ok]
     if not len(library):raise ValueError(f'{mode}: no GUSL spectra with coverage.')
     sam,mbdsa,metric_mask=m.compute_similarity_matrices(X,library)
-    if metric_mask.sum() < (10 if mode=='FULL' else len(wl)):
-        raise ValueError(f'{mode}: insufficient common GUSL coverage: {metric_mask.sum()}/{len(wl)} bands. MASK3 must use every selected band.')
+    if metric_mask.sum() < 10:
+        raise ValueError(f'FULL: insufficient common GUSL coverage: {metric_mask.sum()}/{len(wl)} bands.')
     top=m.build_top_matches_dataframe(names,library_names,sam,mbdsa,m.CLASS_ASSIGNMENT_METRIC,m.TOP_K)
     summary=m.add_acceptance_flags(m.summarize_candidates_by_target_class(top,m.TARGET_CLASS_PREFIXES))
     avg_summary,used,averages=m.collect_candidates_for_class_average(summary,names,X,m.FINAL_TARGET_CLASSES,m.TOP_X_MATERIALS_FOR_AVERAGE)
@@ -1293,42 +1293,10 @@ def select_bands(endmembers, wl, eligible, cfg, output):
     if len(rec)!=selector.N_FINAL_BANDS:
         raise ValueError(f'Spacing/ranking yielded {len(rec)} of {selector.N_FINAL_BANDS} requested bands; no silent relaxation.')
     selected=idx[rec.band_idx.to_numpy(int)]
-    with pd.ExcelWriter(output/'band_selection.xlsx') as writer:
+    with pd.ExcelWriter(output/'diagnostics'/'band_selection.xlsx') as writer:
         for name,frame in [('per_band_scores',per),('top_avg_combinations',top_avg),('top_min_combinations',top_min),('band_frequency',frequency),('recommended_bands',rec)]:frame.to_excel(writer,sheet_name=name,index=False)
     details={'method':'bhattacharyya_diagonal_regularized' if exact else 'standardized_euclidean_proxy','groups':groups,'class_sample_counts':{k:len(v) for k,v in arrays.items()},'evaluated_combinations':len(combos),'eligible_full_grid_indices_base0':idx.tolist(),'selected_scores':rec.merge(per,on=['band_idx','wavelength_um']).to_dict('records')}
     return selected,details
-
-
-def write_reduced_cog(image, output, original_indices, wavelengths):
-    """Copy selected pixels in windows; apply declared source scale/offset only."""
-    tmp=output.with_suffix('.temporary.tif')
-    with rasterio.open(image) as src:
-        profile=src.profile.copy();profile.update(driver='GTiff',count=len(original_indices),dtype='float32',nodata=np.nan,tiled=True,blockxsize=256,blockysize=256,compress='deflate')
-        with rasterio.open(tmp,'w',**profile) as dst:
-            # Dataset tags excluding stale full-grid spectral vectors.
-            dst.update_tags(**{k:v for k,v in src.tags().items() if not any(s in k.lower() for s in ('wavelength','fwhm','band'))})
-            for j,(i,wl) in enumerate(zip(original_indices,wavelengths),1):
-                tags=src.tags(int(i)+1)
-                for key in list(tags):
-                    if key.lower() in ('wavelength','wavelength_um','center_wavelength','units','wavelength_units'):del tags[key]
-                dst.update_tags(j,**tags,wavelength_um=format(float(wl),'.17g'),wavelength_units='um',source_band_index_base1=str(int(i)+1))
-                dst.set_band_description(j,f'{wl:.9f} um')
-            for _,window in src.block_windows(1):
-                data=src.read((original_indices+1).tolist(),window=window,masked=True).astype(np.float32).filled(np.nan)
-                scales=np.array(src.scales)[original_indices,None,None];offsets=np.array(src.offsets)[original_indices,None,None]
-                dst.write((data*scales+offsets).astype(np.float32),window=window)
-    try:rio_copy(tmp,output,driver='COG',COMPRESS='DEFLATE',BLOCKSIZE=256,OVERVIEW_RESAMPLING='AVERAGE')
-    finally:tmp.unlink(missing_ok=True)
-
-
-def assert_alignment(image, excel, wavelength_file, expected):
-    with rasterio.open(image) as src:
-        image_wl=np.array([float(src.tags(b)['wavelength_um']) for b in range(1,src.count+1)])
-    df=pd.read_excel(excel);end_wl=df.iloc[:,0].to_numpy(float);txt=np.loadtxt(wavelength_file,ndmin=1)
-    for label,values in [('image',image_wl),('endmembers',end_wl),('text',txt)]:
-        if values.shape!=np.asarray(expected).shape or not np.allclose(values,expected,rtol=0,atol=1e-12):raise ValueError(f'{label} wavelengths do not align.')
-    if df.shape[1]<3 or not np.all(np.isfinite(df.iloc[:,1:].to_numpy(float))):raise ValueError('Invalid FCLS endmember matrix.')
-    return True
 
 
 def write_json(path,value):
@@ -1356,30 +1324,99 @@ def resolve_stac(directory,asset_key=None):
     return Path(href),item
 
 
-def write_stac(out,image,wl,acquisition_datetime,source_item=None):
+def write_stac(out, input_image, acquisition_datetime, source_item=None):
+    """Describe the two scientific outputs, using the INPUT image only for footprint.
+
+    The source image is neither copied nor registered as an output asset. Supporting
+    diagnostics/metadata are linked as relative STAC assets for EOAP stage-out.
+    """
     import pystac
-    with rasterio.open(image) as src:
-        bounds=transform_bounds(src.crs,'EPSG:4326',*src.bounds,densify_pts=21)
-    l,b,r,t=bounds;geometry={'type':'Polygon','coordinates':[[[l,b],[r,b],[r,t],[l,t],[l,b]]]}
+
+    out = Path(out)
+    with rasterio.open(input_image) as src:
+        bounds = transform_bounds(src.crs, 'EPSG:4326', *src.bounds, densify_pts=21)
+
+    left, bottom, right, top = [float(x) for x in bounds]
+    geometry = {
+        'type': 'Polygon',
+        'coordinates': [[
+            [left, bottom], [right, bottom], [right, top],
+            [left, top], [left, bottom]
+        ]],
+    }
+
     if source_item is not None:
-        dt=source_item.datetime
-        temporal={k:source_item.properties[k] for k in ('start_datetime','end_datetime') if k in source_item.properties}
+        acquisition_time = source_item.datetime
+        temporal = {
+            k: source_item.properties[k]
+            for k in ('start_datetime', 'end_datetime')
+            if k in source_item.properties
+        }
     else:
-        if not acquisition_datetime:raise ValueError('Provide acquisition_datetime in config for non-STAC input; processing time is not acquisition time.')
-        dt=datetime.fromisoformat(acquisition_datetime.replace('Z','+00:00'));temporal={}
-        if dt.tzinfo is None:raise ValueError('Acquisition datetime needs a timezone.')
-    item=pystac.Item('class-guided-mask3',geometry,list(bounds),dt,temporal)
-    item.properties['heatwise:processor_version']=VERSION
-    item.properties['heatwise:processed_at']=datetime.now(timezone.utc).isoformat()
+        if not acquisition_datetime:
+            raise ValueError('Acquisition datetime required for direct image inputs.')
+        acquisition_time = datetime.fromisoformat(
+            acquisition_datetime.replace('Z', '+00:00')
+        )
+        if acquisition_time.tzinfo is None:
+            raise ValueError('Acquisition datetime needs a timezone.')
+        temporal = {}
+
+    if acquisition_time is None and not temporal:
+        raise ValueError('Input STAC must supply an acquisition time or interval.')
+
+    item = pystac.Item(
+        'class-guided-full', geometry, [left, bottom, right, top],
+        acquisition_time, temporal
+    )
+    item.properties['heatwise:processor_version'] = VERSION
+    item.properties['heatwise:processed_at'] = datetime.now(timezone.utc).isoformat()
+    item.properties['heatwise:endmember_selection'] = 'FULL'
+    item.properties['heatwise:band_selection_independent'] = True
+    if source_item is not None:
+        item.properties['heatwise:source_item_id'] = source_item.id
+
+    main_products = {'selected_endmembers.xlsx', 'selected_bands.json'}
     for path in sorted(out.rglob('*')):
-        if not path.is_file() or path.name.endswith('.log') or path.name in ('catalog.json','item.json'):continue
-        typ=pystac.MediaType.COG if path.suffix=='.tif' else ('application/json' if path.suffix=='.json' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if path.suffix=='.xlsx' else 'application/octet-stream' if path.suffix in ('.npz', '.npy') else 'text/csv' if path.suffix=='.csv' else 'text/plain')
-        asset=pystac.Asset('./'+path.relative_to(out).as_posix(),media_type=typ,roles=['data' if path.suffix=='.tif' else 'metadata'])
-        if path==image:asset.extra_fields['bands']=[{'name':f'band_{i+1}','eo:center_wavelength':float(w)} for i,w in enumerate(wl)]
-        item.add_asset(path.relative_to(out).as_posix(),asset)
-    catalog=pystac.Catalog('heatwise-class-guided','Scene-specific spectral preprocessing products.')
-    catalog.add_item(item);catalog.set_self_href(str(out/'catalog.json'));item.set_self_href(str(out/'item.json'))
-    catalog.make_all_asset_hrefs_relative();catalog.save(catalog_type=pystac.CatalogType.SELF_CONTAINED)
+        if not path.is_file() or path.name.endswith('.log'):
+            continue
+        if path.name in ('catalog.json', 'item.json'):
+            continue
+        if path.suffix == '.json':
+            media_type = 'application/json'
+        elif path.suffix == '.xlsx':
+            media_type = (
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        elif path.suffix == '.csv':
+            media_type = 'text/csv'
+        elif path.suffix in ('.npz', '.npy'):
+            media_type = 'application/octet-stream'
+        else:
+            media_type = 'text/plain'
+        relative_path = path.relative_to(out).as_posix()
+        item.add_asset(
+            relative_path,
+            pystac.Asset(
+                './' + relative_path,
+                media_type=media_type,
+                roles=['data'] if relative_path in main_products else ['metadata'],
+            ),
+        )
+
+    missing_products = main_products - set(item.assets)
+    if missing_products:
+        raise ValueError(f'STAC scientific products are missing: {missing_products}')
+
+    catalog = pystac.Catalog(
+        'heatwise-class-guided',
+        'Scene-specific FULL endmembers and independent selected bands.'
+    )
+    catalog.add_item(item)
+    catalog.set_self_href(str((out / 'catalog.json').resolve()))
+    item.set_self_href(str((out / 'item.json').resolve()))
+    catalog.make_all_asset_hrefs_relative()
+    catalog.save(catalog_type=pystac.CatalogType.SELF_CONTAINED)
 
 
 def load_config(path):
@@ -1403,69 +1440,154 @@ def sha256(path):
     return h.hexdigest()
 
 
-def run(image,gusl,out,cfg,wavelength_file=None,source_item=None):
-    if source_item is None and not cfg['acquisition_datetime']:
-        raise ValueError('Direct image input requires acquisition_datetime in config for STAC output.')
-    out=Path(out);out.mkdir(parents=True,exist_ok=True)
-    if any(out.iterdir()):raise ValueError('Output directory must be empty (prevents stale or mixed products).')
-    write_json(out/'effective_config.json',cfg)
-    cube,wl,original_order,profile=read_image(image,wavelength_file)
-    candidates,usable,strata=extract_candidates(cube,wl,cfg)
-    scene=np.stack([c['spectrum'] for c in candidates]);wl_use=wl[usable];orig=original_order[usable]
-    names=[f'CAND_{i+1:03d}' for i in range(len(candidates))]
-    diagnostics=out/'diagnostics';diagnostics.mkdir()
-    pd.DataFrame([{k:v for k,v in c.items() if k!='spectrum'}|{'candidate':name} for c,name in zip(candidates,names)]).to_csv(diagnostics/'candidates.csv',index=False)
-    if cfg['export_intermediates']:
-        np.savez_compressed(diagnostics/'candidates.npz',spectra=scene,wavelengths_um=wl_use,original_indices_base0=orig,**strata)
-    matcher=Matching(cfg['matching']);libraries=matcher.read_multiple_gusl_sheets(gusl,matcher.GUSL_SHEETS)
-    lib=[];lnames=[]
-    for entry in libraries:
-        if np.max(entry['wl'])>50:raise ValueError('GUSL wavelengths must be in micrometers; convert the source explicitly.')
-        lib.append(matcher.pchip_library_to_target_grid(entry['wl'],entry['X'],wl_use));lnames.extend(entry['names'])
-    lib=np.vstack(lib)
-    full,common=match_candidates(matcher,scene,wl_use,names,lib,lnames,'FULL',diagnostics,cfg['export_intermediates'])
-    pd.DataFrame({'wavelength_um':wl_use,**full}).to_excel(out/'Endmembers_FULL.xlsx',index=False)
-       # Endmembers are selected exclusively using FULL spectral matching.
-    # Band selection is performed independently and does not alter endmembers.
-    final = full
+def run(image, gusl, out, cfg, wavelength_file=None, source_item=None):
+    """Select FULL endmembers and, independently, 15 discriminative bands.
 
-    selected, details = select_bands(
-        final, wl_use, common, cfg, out
+    Scientific outputs:
+      - selected_endmembers.xlsx: all usable wavelengths for the final endmembers.
+      - selected_bands.json: independent selected indices/wavelengths.
+
+    No MASK3 re-matching, no reduced raster, and no FCLS execution.
+    """
+    if source_item is None and not cfg['acquisition_datetime']:
+        raise ValueError(
+            'Direct image input requires acquisition_datetime in config for STAC output.'
+        )
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    if any(out.iterdir()):
+        raise ValueError('Output directory must be empty (prevents mixed products).')
+
+    # Administrative/diagnostic metadata are not additional scientific outputs.
+    write_json(out / 'effective_config.json', cfg)
+    cube, wl, original_order, _profile = read_image(image, wavelength_file)
+    candidates, usable, strata = extract_candidates(cube, wl, cfg)
+    scene = np.stack([c['spectrum'] for c in candidates])
+    wl_use = wl[usable]
+    orig = original_order[usable]
+    names = [f'CAND_{i+1:03d}' for i in range(len(candidates))]
+
+    diagnostics = out / 'diagnostics'
+    diagnostics.mkdir()
+    pd.DataFrame([
+        {k: v for k, v in c.items() if k != 'spectrum'} | {'candidate': name}
+        for c, name in zip(candidates, names)
+    ]).to_csv(diagnostics / 'candidates.csv', index=False)
+    if cfg['export_intermediates']:
+        np.savez_compressed(
+            diagnostics / 'candidates.npz',
+            spectra=scene,
+            wavelengths_um=wl_use,
+            original_indices_base0=orig,
+            **strata,
+        )
+
+    matcher = Matching(cfg['matching'])
+    libraries = matcher.read_multiple_gusl_sheets(gusl, matcher.GUSL_SHEETS)
+    lib = []
+    library_names = []
+    for entry in libraries:
+        if np.max(entry['wl']) > 50:
+            raise ValueError(
+                'GUSL wavelengths must be in micrometers; convert explicitly.'
+            )
+        lib.append(
+            matcher.pchip_library_to_target_grid(entry['wl'], entry['X'], wl_use)
+        )
+        library_names.extend(entry['names'])
+    lib = np.vstack(lib)
+
+    # Exactly one class-guided selection: FULL. It uses the intersection of
+    # valid bands for scene candidates and the library (the existing kernel).
+    final, common = match_candidates(
+        matcher, scene, wl_use, names, lib, library_names,
+        'FULL', diagnostics, cfg['export_intermediates']
     )
-    groups=infer_groups(list(final),matcher.FINAL_TARGET_CLASSES,cfg['class_mapping'])
-    missing=set(cfg['required_classes'])-set(groups)
+    groups = infer_groups(
+        list(final), matcher.FINAL_TARGET_CLASSES, cfg['class_mapping']
+    )
+    missing = set(cfg['required_classes']) - set(groups)
     if missing:
         raise ValueError(
             f'Required material classes missing after FULL: {sorted(missing)}'
         )
-    selected_wl=wl_use[selected]
-    excel=out/'EndmembersFinales_mask3.xlsx';image_out=out/'hyperspectral_mask3_COG.tif';txt=out/'mask3_wavelengths_um.txt'
-    pd.DataFrame({'wavelength_um':selected_wl,**final}).to_excel(excel,index=False,sheet_name='endmembers')
-    np.savetxt(txt,selected_wl,fmt='%.17g')
-    write_reduced_cog(image,image_out,orig[selected],selected_wl)
-    assert_alignment(image_out,excel,txt,selected_wl)
-    details.update(wavelengths_um=selected_wl.tolist(),original_band_indices_base0=orig[selected].tolist(),original_band_indices_base1=(orig[selected]+1).tolist(),full_metric_original_indices_base0=orig[common].tolist(),selected_full_grid_indices_base0=selected.tolist(),seed=cfg['seed'],configuration=cfg['bands'],mask3_reselection=True)
-    write_json(out/'selected_bands.json',details)
-    write_json(out/'endmember_classes.json',{'classes':groups,'note':'FCLS output bands correspond to individual endmembers; material abundances require summing bundle members.'})
-    summary={'version':VERSION,'status':'success','input_sha256':{'image':sha256(image),'gusl':sha256(gusl)},'versions':{p:importlib.metadata.version(p) for p in ['numpy','scipy','pandas','rasterio','scikit-learn','openpyxl','pystac']},'python':sys.version,'gdal':rasterio.__gdal_version__,'candidate_count':len(candidates),'usable_image_bands':int(usable.sum()),'full_metric_bands':int(common.sum()),'selected_bands':len(selected),'final_endmembers':list(final),'missing_target_classes':sorted(set(matcher.FINAL_TARGET_CLASSES)-set(groups)),'alignment_verified':True,'band_selection_method':details['method'],'scientific_accuracy_validated':False}
-    summary['input_band_count'] = int(len(wl))
-    write_json(out/'unmixing_inputs.json', {
-        'consumer': 'ESA-Heatwise/heatwise-hysupp-unmixing',
-        'input_image': image_out.name,
-        'endmembers': excel.name,
-        'wavelengths_txt': txt.name,
-        'scale_factor': 1.0,
-        'image_axis_order': ['bands', 'rows', 'columns'],
-        'endmember_axis_order': ['wavelength_rows', 'endmember_columns'],
-        'spectral_bands': len(selected),
-        'endmember_names': list(final),
-        'wavelengths_um': selected_wl.tolist(),
-        'alignment_verified': True,
+
+    # First scientific product. The signatures come from the original FULL
+    # candidates and retain all USABLE bands, not just the band optimizer's 15.
+    endmembers = pd.DataFrame({'wavelength_um': wl_use, **final})
+    numeric = endmembers.to_numpy(dtype=float)
+    if endmembers.shape[1] < 3:
+        raise ValueError('At least two endmembers are required by FCLS.')
+    if numeric.shape[0] != len(wl_use) or not np.isfinite(numeric).all():
+        raise ValueError('Endmember spectra must be finite on every usable band.')
+    if np.any(np.diff(endmembers['wavelength_um'].to_numpy(float)) <= 0):
+        raise ValueError('Endmember wavelengths must be strictly increasing.')
+    endmembers.to_excel(
+        out / 'selected_endmembers.xlsx', index=False, sheet_name='endmembers'
+    )
+
+    # Second scientific product: optimize bands from FULL endmembers only.
+    # Its result does not modify or reselect the endmembers.
+    selected, details = select_bands(final, wl_use, common, cfg, out)
+    selected_wl = wl_use[selected]
+    if len(selected) != cfg['bands']['N_FINAL_BANDS']:
+        raise ValueError('The requested number of optimized bands was not achieved.')
+    details.update(
+        wavelengths_um=selected_wl.tolist(),
+        original_band_indices_base0=orig[selected].tolist(),
+        original_band_indices_base1=(orig[selected] + 1).tolist(),
+        selected_usable_grid_indices_base0=selected.tolist(),
+        full_metric_original_indices_base0=orig[common].tolist(),
+        seed=cfg['seed'],
+        configuration=cfg['bands'],
+        band_selection_independent=True,
+        mask3_reselection=False,
+    )
+    write_json(out / 'selected_bands.json', details)
+
+    write_json(
+        diagnostics / 'endmember_classes.json',
+        {
+            'classes': groups,
+            'note': (
+                'FCLS endmembers include class replicates. Summed material '
+                'abundances may require aggregating corresponding output bands.'
+            ),
+        },
+    )
+    summary = {
+        'version': VERSION,
+        'status': 'success',
+        'input_sha256': {'image': sha256(image), 'gusl': sha256(gusl)},
+        'versions': {
+            p: importlib.metadata.version(p)
+            for p in [
+                'numpy', 'scipy', 'pandas', 'rasterio',
+                'scikit-learn', 'openpyxl', 'pystac'
+            ]
+        },
+        'python': sys.version,
+        'gdal': rasterio.__gdal_version__,
+        'input_band_count': int(len(wl)),
+        'usable_image_bands': int(usable.sum()),
+        'full_metric_bands': int(common.sum()),
+        'endmember_spectral_bands': int(len(wl_use)),
+        'candidate_count': len(candidates),
+        'final_endmembers': list(final),
+        'missing_target_classes': sorted(
+            set(matcher.FINAL_TARGET_CLASSES) - set(groups)
+        ),
+        'selected_bands': int(len(selected)),
+        'endmember_selection': 'FULL',
+        'mask3_reselection': False,
+        'band_selection_independent': True,
+        'endmember_spectra_validated': True,
+        'band_selection_method': details['method'],
         'unmixing_executed': False,
-        'note': 'Paths are relative to this JSON. Official processor accepts GeoTIFF and XLSX/CSV, not MAT endmembers.'
-    })
-    write_json(out/'run_summary.json',summary)
-    write_stac(out,image_out,selected_wl,cfg['acquisition_datetime'],source_item)
+        'scientific_accuracy_validated': False,
+    }
+    write_json(out / 'run_summary.json', summary)
+    write_stac(out, image, cfg['acquisition_datetime'], source_item)
     return summary
 
 
