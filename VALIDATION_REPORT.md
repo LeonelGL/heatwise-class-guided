@@ -28,3 +28,7 @@ The actual Sepolia CHIME v2 250-band image, complete GUSL resource and trustwort
 ## EOAP publication revision
 
 All diagnostic files are now referenced as relative STAC assets, to preserve them during stage-out. Regression tests cover candidates.csv and unmixing_inputs.json references (pytest_eoap.log). CWL software version/repository metadata and docs/EOAP_READINESS.md were added. GitHub Actions uses contents:read only and is prepared to test Docker and containerized CWL; its presence is not evidence of a successful run. No new scientific changes were introduced.
+
+## GitHub Actions execution (2026-10-26)
+
+Run 40362015074 at commit 372796c passed scientific regression tests and built the Docker image, but containerized execution failed on importing Rasterio: `libexpat.so.1` was missing. Consequently the final output check failed because no products were created. This was a container dependency failure, not successful end-to-end validation. The Dockerfile now explicitly installs `libexpat1` and imports the scientific/geospatial dependencies at build time. The corrected container requires a new CI run.
