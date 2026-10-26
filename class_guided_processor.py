@@ -1425,12 +1425,19 @@ def run(image,gusl,out,cfg,wavelength_file=None,source_item=None):
     lib=np.vstack(lib)
     full,common=match_candidates(matcher,scene,wl_use,names,lib,lnames,'FULL',diagnostics,cfg['export_intermediates'])
     pd.DataFrame({'wavelength_um':wl_use,**full}).to_excel(out/'Endmembers_FULL.xlsx',index=False)
-    selected,details=select_bands(full,wl_use,common,cfg,out)
-    # MASK3 is re-matching from ALL candidates, never cropping the FULL selections.
-    final,mask_common=match_candidates(matcher,scene[:,selected],wl_use[selected],names,lib[:,selected],lnames,'MASK3',diagnostics,cfg['export_intermediates'])
+       # Endmembers are selected exclusively using FULL spectral matching.
+    # Band selection is performed independently and does not alter endmembers.
+    final = full
+
+    selected, details = select_bands(
+        final, wl_use, common, cfg, out
+    )
     groups=infer_groups(list(final),matcher.FINAL_TARGET_CLASSES,cfg['class_mapping'])
     missing=set(cfg['required_classes'])-set(groups)
-    if missing:raise ValueError(f'Required material classes missing after MASK3: {sorted(missing)}')
+    if missing:
+        raise ValueError(
+            f'Required material classes missing after FULL: {sorted(missing)}'
+        )
     selected_wl=wl_use[selected]
     excel=out/'EndmembersFinales_mask3.xlsx';image_out=out/'hyperspectral_mask3_COG.tif';txt=out/'mask3_wavelengths_um.txt'
     pd.DataFrame({'wavelength_um':selected_wl,**final}).to_excel(excel,index=False,sheet_name='endmembers')
