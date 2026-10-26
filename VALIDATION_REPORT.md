@@ -12,7 +12,7 @@ The adapter, upstream runtime copy and full-chain/FCLS CWL documents were remove
 
 - Python 3.11.17 environment rebuilt from the pinned dependency lock (dependencies.log).
 - 19 unit/regression/integration tests passed (pytest_final.log), including original-kernel parity, same-seed reproduction, nodata, physical reflectance, class grouping, alignment rejection and the new handoff contract.
-- CWL Workflow static validation passed (cwl.log). Container execution was not performed.
+- CWL Workflow static validation passed (cwl.log). Container execution was not performed during that local check; subsequent GitHub CI evidence is recorded below.
 - A fresh 250-band synthetic image and synthetic GUSL ran through all scientific stages: 67 candidates, 249 usable image bands, 248 FULL comparison bands, 15 selected bands and 9 final endmembers, including vegetation (synthetic_250_final.log and examples/output_250/run_summary.json).
 - This 250-band run used the fast synthetic configuration (1,500 combinations), not the 500,000-combination report setting. The historical 120-band synthetic output_500k remains a separately identified version 0.1.0 example; it is not Sepolia validation.
 - Official consumer input-reader compatibility and strict COG/STAC checks are recorded in official_input_contract.json and output_checks_250.json respectively. These checks do not execute the FCLS solver.
@@ -23,7 +23,7 @@ The previous virtual environment's Python symlink was unavailable; a new Python 
 
 ## Pending
 
-The actual Sepolia CHIME v2 250-band image, complete GUSL resource and trustworthy acquisition/wavelength metadata are required for real execution and comparison with the historical experiment. Required material coverage and scene-specific gap settings must be verified on those inputs. Docker build/run, containerized CWL, a published digest-pinned image and ESA target-platform interoperability remain untested. The GitHub connector returned HTTP 404; source publication is being performed through the authorized browser session. Check the repository commit history for publication status.
+The actual Sepolia CHIME v2 250-band image, complete GUSL resource and trustworthy acquisition/wavelength metadata are required for real execution and comparison with the historical experiment. Required material coverage and scene-specific gap settings must be verified on those inputs. A published digest-pinned image and ESA target-platform interoperability remain pending. Docker build/run and containerized CWL subsequently passed in GitHub CI as recorded below. The GitHub connector returned HTTP 404; source publication is being performed through the authorized browser session. Check the repository commit history for publication status.
 
 ## EOAP publication revision
 
@@ -31,4 +31,8 @@ All diagnostic files are now referenced as relative STAC assets, to preserve the
 
 ## GitHub Actions execution (2026-10-26)
 
-Run 40362015074 at commit 372796c passed scientific regression tests and built the Docker image, but containerized execution failed on importing Rasterio: `libexpat.so.1` was missing. Consequently the final output check failed because no products were created. This was a container dependency failure, not successful end-to-end validation. The Dockerfile now explicitly installs `libexpat1` and imports the scientific/geospatial dependencies at build time. The corrected container requires a new CI run.
+Run 40362015074 at commit 372796c passed scientific regression tests and built the Docker image, but containerized execution failed on importing Rasterio: `libexpat.so.1` was missing. Consequently the final output check failed because no products were created. This was a container dependency failure, not successful end-to-end validation. The Dockerfile now explicitly installs `libexpat1` and imports the scientific/geospatial dependencies at build time. The corrected container passed the subsequent run described below.
+
+### Corrected container: PASS
+
+[GitHub Actions run 40362481432](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40362481432), commit `babdddc8e4aa44bde80da48e4bde713ffe2ee67d`, completed successfully on 2026-10-26. It executed the scientific regression suite, CWL validation, Docker build with import smoke checks, containerized CWL on the bundled 120-band synthetic STAC input, and final output validation. Output checks confirmed spectral alignment, strict COG validity with zero errors/warnings, one schema-valid STAC Item and 22 existing relative assets (including diagnostics). This CI experiment uses the fast synthetic configuration; it does not reproduce the real Sepolia experiment or certify ESA platform interoperability. FCLS was not executed.

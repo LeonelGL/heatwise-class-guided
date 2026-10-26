@@ -61,7 +61,7 @@ docker build -t heatwise/class-guided:0.2.0 .
 python -m cwltool --outdir results/cwl cwl/workflow.cwl examples/job_synthetic.yml
 ```
 
-See `VALIDATION_REPORT.md` for executed checks and limits. Real Sepolia v2/GUSL reproduction and Docker/platform execution remain pending.
+See `VALIDATION_REPORT.md` for executed checks and limits. Docker and containerized CWL passed GitHub Actions run 40362481432. Real Sepolia v2/GUSL reproduction and ESA target-platform acceptance remain pending.
 
 `examples/output_250` is the fresh version 0.2.0 preprocessing example for a **synthetic** 250-band input. Its generator supports `make(path, band_count=250)`. It is not the real Sepolia sensor grid. `examples/output_500k` is a retained historical synthetic 0.1.0 preprocessing example using the larger band search. Neither is a real-scene accuracy validation.
 
