@@ -39,5 +39,5 @@ outputs:
     outputSource: prepare/products
 $namespaces:
   s: https://schema.org/
-s:softwareVersion: "0.3.0"
+s:softwareVersion: "0.3.1"
 s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided

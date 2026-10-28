@@ -1,4 +1,4 @@
-# Validation report — HEATWISE class-guided 0.3.0
+# Validation report — HEATWISE class-guided 0.3.1
 
 ## Intended scientific contract
 
@@ -21,7 +21,7 @@ the exported usable endmember grid. `full_metric_bands` and
 
 | Check | State | Evidence / required follow-up |
 | --- | --- | --- |
-| `class_guided_processor.py` in working branch | Implemented | FULL-only pipeline with version `0.3.0`; exact commit history in GitHub |
+| `class_guided_processor.py` in working branch | Implemented | FULL-only pipeline with version `0.3.1`; exact commit history in GitHub |
 | Unit/kernel parity tests | Test definitions updated | Run `python -m pytest tests -q` and review results for current commit |
 | Synthetic end-to-end FULL export | Test defined | `test_end_to_end_full_only_reproducible`; execute on current commit |
 | Two-product/STAC validation | Validator updated | Run `python tools/validate_outputs.py results/ci/results` |
@@ -84,3 +84,23 @@ Do not infer real-scene classification accuracy or ESA certification.
    matching input checksums and output provenance.
 
 No v0.3.0 scientific accuracy claim is made here.
+
+## 0.3.1 general missing-class fallback (provisional)
+
+The generic policy is enabled by default for every missing target class,
+not by a scene-specific exception. It finds the best **unused scene-derived**
+signatures within a configurable FULL SAM ceiling against all GUSL examples
+for each missing class. A joint assignment prevents reuse of one candidate
+by different classes. No class is fabricated if this criterion is not met.
+
+Local checks performed when preparing the change:
+- seven targeted unit tests passed;
+- the archived real Sepolia FULL matrices recovered terracotta and metal
+  provisionally as two distinct candidates, with SAM angles below 8 degrees;
+- a separate synthetic end-to-end run exported all usable wavelengths and
+  15 independent selected bands and did not activate fallback when no class
+  was missing. The STAC stage was replaced by a local stub in this run
+  because this sandbox lacks pystac; GitHub Actions must verify STAC/CWL.
+
+The new workflow on GitHub Actions and independent material validation with
+reference samples **remain unverified** until executed on the final commit.

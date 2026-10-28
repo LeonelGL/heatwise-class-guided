@@ -1,4 +1,4 @@
-# HEATWISE class-guided v0.3.0 — EOAP processing boundary
+# HEATWISE class-guided v0.3.1 — EOAP processing boundary
 
 ## Scope
 
@@ -26,7 +26,7 @@ or postprocessing occurs in this application.
   GUSL, configuration and optional wavelength file; output is a Directory.
 - `cwl/preprocess.cwl`: corresponding CommandLineTool, explicit CLI
   bindings and `DockerRequirement` for local image tag
-  `heatwise/class-guided:0.3.0`.
+  `heatwise/class-guided:0.3.1`.
 - `cwl/local/workflow.cwl` and `cwl/local/preprocess.cwl`: local no-Docker
   variants, used only with an installed Python environment.
 - `Dockerfile`: Python 3.11 implementation and pinned dependencies.
@@ -57,9 +57,19 @@ validated direct compatibility follows solely from synthetic tests.
 The code is structured for CWL/OGC EOAP-style packaging, but
 **this is not ESA platform approval or certification**. The current
 branch's full CI/Docker/CWL outcome and real-scene Sepolia/GUSL run must
-be checked after the v0.3.0 updates are committed.
+be checked after the v0.3.1 updates are committed.
 
 Before delivery, confirm: target-platform stage-in/stage-out behavior,
 published container image pinned by digest, source licensing, GUSL
 distribution rights, metadata and band alignment, scientific results
 against reference validation points, and documented reproducibility.
+
+## Missing-class provenance
+
+The general FULL fallback is enabled by default and operates on every missing
+`FINAL_TARGET_CLASSES` material, independently of city. Fallback endmembers
+are included in the same scientific XLSX with full usable spectra, but
+annotated as **provisional** in diagnostic JSON/run metadata. If no unused
+candidate meets the configured SAM limit, the class is unresolved and must
+not be presented as observed or verified.
+
