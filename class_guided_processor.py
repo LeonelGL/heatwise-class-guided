@@ -13,9 +13,10 @@ import pandas as pd
 import rasterio
 from rasterio.warp import transform_bounds
 from scipy.interpolate import PchipInterpolator
+from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 import yaml
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 class Configurable:
     def __init__(self, overrides=None):
@@ -301,7 +302,7 @@ class Extraction(Configurable):
         return final
 
 class Matching(Configurable):
-    DEFAULTS = {'MATCH_RANK_METRIC': 'mbdsa', 'CLASS_ASSIGNMENT_METRIC': 'sam', 'USE_ACCEPTANCE_THRESHOLDS': False, 'MAX_ACCEPTED_SAM_DEG': 8.0, 'MAX_ACCEPTED_MBDSA': 0.12, 'MIN_MARGIN_TO_2ND_SAM_DEG': 1.0, 'MIN_MARGIN_TO_2ND_MBDSA': 0.01, 'X3_WEIGHT_CLASS_SCORE': 0.5, 'X3_WEIGHT_PAIR_MARGIN': 0.35, 'X3_WEIGHT_DIVERSITY': 0.15}
+    DEFAULTS = {'MATCH_RANK_METRIC': 'mbdsa', 'CLASS_ASSIGNMENT_METRIC': 'sam', 'USE_ACCEPTANCE_THRESHOLDS': False, 'MAX_ACCEPTED_SAM_DEG': 8.0, 'MAX_ACCEPTED_MBDSA': 0.12, 'MIN_MARGIN_TO_2ND_SAM_DEG': 1.0, 'MIN_MARGIN_TO_2ND_MBDSA': 0.01, 'X3_WEIGHT_CLASS_SCORE': 0.5, 'X3_WEIGHT_PAIR_MARGIN': 0.35, 'X3_WEIGHT_DIVERSITY': 0.15, 'FALLBACK_ENABLED': True, 'FALLBACK_MAX_SAM_DEG': 8.0, 'FALLBACK_MAX_SAM_BY_CLASS': {}}
 
     def normalize_name(self, s):
         s = str(s).strip()
@@ -1209,6 +1210,184 @@ def extract_candidates(cube, wl, cfg):
     return final,usable,strata
 
 
+
+def select_missing_class_fallbacks(
+    matcher, scene, candidate_names, library_names, sam, mbdsa,
+    class_assignments, selected_classes, reserved_candidates,
+):
+    """General FULL-spectrum fallback for every unrepresented target class.
+
+    Ordinary class-guided matching determines the primary endmembers. Only
+    classes absent from those outputs participate in the fallback. For each
+    missing class, compare *every* available scene candidate against *all*
+    spectra from that GUSL class, not only Top-K matches; permit a nonwinning
+    global class or failed margin, but enforce a configurable class-specific
+    SAM ceiling and forbid candidate reuse. The one-to-one assignment maximizes
+    the number of recovered classes before minimizing the total SAM.
+
+    Return (class_to_candidate_info, report). Each selected spectrum is a real
+    scene-derived candidate on all usable wavelengths, never a GUSL template.
+    The report explicitly records rejected/unresolved and provisional results.
+    """
+    scene = np.asarray(scene)
+    sam = np.asarray(sam)
+    mbdsa = np.asarray(mbdsa)
+    if scene.ndim != 2 or sam.shape != mbdsa.shape:
+        raise ValueError('Expected candidate spectra and paired FULL similarity matrices.')
+    if scene.shape[0] != len(candidate_names) or sam.shape != (len(candidate_names), len(library_names)):
+        raise ValueError('FULL matrices must align with candidate and GUSL names.')
+    if len(set(candidate_names)) != len(candidate_names):
+        raise ValueError('Candidate names must be unique for fallback selection.')
+    if not np.all(np.isfinite(scene)):
+        raise ValueError('FULL fallback requires finite scene candidate spectra.')
+
+    targets = list(matcher.FINAL_TARGET_CLASSES)
+    if len(set(targets)) != len(targets):
+        raise ValueError('Duplicate FINAL_TARGET_CLASSES are not supported.')
+    missing = [cls for cls in targets if cls not in selected_classes]
+    thresholds_by_class = matcher.FALLBACK_MAX_SAM_BY_CLASS
+    if not isinstance(thresholds_by_class, dict):
+        raise ValueError('FALLBACK_MAX_SAM_BY_CLASS must be a class: SAM-degrees dictionary.')
+    unknown = set(thresholds_by_class) - set(targets)
+    if unknown:
+        raise ValueError(f'Unknown fallback threshold classes: {sorted(unknown)}')
+    thresholds = {}
+    for cls in targets:
+        value = float(thresholds_by_class.get(cls, matcher.FALLBACK_MAX_SAM_DEG))
+        if not np.isfinite(value) or not 0 < value < 90:
+            raise ValueError(f'Invalid fallback SAM ceiling for {cls}: {value}')
+        thresholds[cls] = value
+
+    report = {
+        'enabled': bool(matcher.FALLBACK_ENABLED),
+        'mode': 'FULL',
+        'selection_policy': 'MAXIMIZE_RECOVERED_CLASSES_THEN_MINIMIZE_TOTAL_SAM',
+        'missing_classes_before_fallback': missing,
+        'sam_thresholds_deg': {cls: thresholds[cls] for cls in missing},
+        'reserved_candidate_count': len(reserved_candidates),
+        'selected': [],
+        'unresolved': [],
+        'provisional_class_identity': True,
+        'note': 'Fallback endmembers are tentative scene signatures; a low SAM does not validate material identity.',
+    }
+    if not missing:
+        return {}, report
+    if not matcher.FALLBACK_ENABLED:
+        report['unresolved'] = [
+            {'class_name': cls, 'reason': 'FALLBACK_DISABLED'} for cls in missing
+        ]
+        return {}, report
+
+    free = [i for i, name in enumerate(candidate_names) if name not in reserved_candidates]
+    if not free:
+        report['unresolved'] = [
+            {'class_name': cls, 'reason': 'NO_UNRESERVED_SCENE_CANDIDATES'} for cls in missing
+        ]
+        return {}, report
+
+    n_class = len(missing)
+    # Dedicated dummy columns permit scientifically honest unresolved classes.
+    # Make the dummy penalty larger than the maximum total difference among
+    # feasible real assignments, so the optimization truly maximizes the
+    # recovered-class count for ANY number of configured target classes.
+    max_angle = max(thresholds.values())
+    dummy_cost = (n_class + 1) * (max_angle + 1.0) + 1.0
+    invalid_cost = (n_class + 1) * (dummy_cost + 1.0)
+    costs = np.full((n_class, len(free) + n_class), invalid_cost, dtype=float)
+    costs[:, len(free):] = dummy_cost
+    eligible_records = {}
+    class_overviews = {}
+    class_positions = {}
+    for row, cls in enumerate(missing):
+        prefixes = matcher.TARGET_CLASS_PREFIXES.get(cls, [])
+        indices = [
+            j for j, name in enumerate(library_names)
+            if matcher.material_prefix_match(name, prefixes)
+        ]
+        if not prefixes or not indices:
+            class_overviews[cls] = {
+                'class_name': cls, 'reason': 'NO_GUSL_SIGNATURES_FOR_CLASS',
+            }
+            continue
+        class_positions[cls] = indices
+        subset = sam[np.ix_(free, indices)]
+        for col, candidate_index in enumerate(free):
+            local = subset[col]
+            good = np.flatnonzero(np.isfinite(local))
+            if not good.size:
+                continue
+            # First SAM, then MBDSA and fixed spectral/library index. Never Top-K.
+            best_local = min(good, key=lambda j: (
+                float(local[j]), float(mbdsa[candidate_index, indices[j]]),
+                str(library_names[indices[j]]),
+            ))
+            lib_index = indices[int(best_local)]
+            angle = float(sam[candidate_index, lib_index])
+            if angle <= thresholds[cls]:
+                # Tiny deterministic tie-breakers; do not change scientific ranking.
+                costs[row, col] = angle + 1e-8 * col + 1e-10 * float(mbdsa[candidate_index, lib_index])
+                eligible_records[(row, col)] = (candidate_index, lib_index, angle)
+        viable = [entry[2] for (r, _), entry in eligible_records.items() if r == row]
+        if not viable:
+            minimum = np.nanmin(subset) if np.isfinite(subset).any() else None
+            class_overviews[cls] = {
+                'class_name': cls, 'reason': 'SAM_ABOVE_CEILING_OR_NO_FINITE_MATCH',
+                'best_available_sam_deg': float(minimum) if minimum is not None else None,
+                'max_accepted_sam_deg': thresholds[cls],
+            }
+
+    rows, columns = linear_sum_assignment(costs)
+    assignments = {}
+    details_by_candidate = (
+        class_assignments.set_index('candidate', drop=False)
+        if not class_assignments.empty and 'candidate' in class_assignments else None
+    )
+    for row, col in sorted(zip(rows, columns)):
+        cls = missing[row]
+        if (row, col) not in eligible_records:
+            report['unresolved'].append(class_overviews.get(cls, {
+                'class_name': cls, 'reason': 'NO_UNIQUE_ELIGIBLE_CANDIDATE',
+                'max_accepted_sam_deg': thresholds[cls],
+            }))
+            continue
+        ci, li, angle = eligible_records[(row, col)]
+        cname = str(candidate_names[ci])
+        competing = [j for j in range(len(library_names)) if j not in set(class_positions[cls])]
+        comp_index = min(
+            competing, key=lambda j: (float(sam[ci, j]), str(library_names[j]))
+        ) if competing else None
+        old = None
+        if details_by_candidate is not None and cname in details_by_candidate.index:
+            old = details_by_candidate.loc[cname]
+        detail = {
+            'class_name': cls,
+            'candidate': cname,
+            'gusl_match': str(library_names[li]),
+            'sam_deg': angle,
+            'mbdsa': float(mbdsa[ci, li]),
+            'max_accepted_sam_deg': thresholds[cls],
+            'best_competing_gusl_match': str(library_names[comp_index]) if comp_index is not None else None,
+            'best_competing_sam_deg': float(sam[ci, comp_index]) if comp_index is not None else None,
+            'sam_margin_to_best_competitor_deg': (
+                float(sam[ci, comp_index] - angle) if comp_index is not None else None
+            ),
+            'original_best_target_class': (
+                str(old['best_target_class'])
+                if old is not None and pd.notna(old['best_target_class']) else None
+            ),
+            'original_accepted_by_thresholds': (
+                bool(old['accepted_by_thresholds'])
+                if old is not None and pd.notna(old['accepted_by_thresholds']) else None
+            ),
+            'selection_method': 'FULL_CLASS_CONDITIONAL_FALLBACK',
+            'quality_flag': 'PROVISIONAL_REQUIRES_INDEPENDENT_VALIDATION',
+        }
+        assignments[cls] = {'scene_index': ci, 'detail': detail}
+        report['selected'].append(detail)
+
+    return assignments, report
+
+
 def match_candidates(m, X, wl, names, library, library_names, mode, output, export):
     """Class-guided selection using the FULL common finite spectral domain."""
     if mode != 'FULL':
@@ -1232,6 +1411,33 @@ def match_candidates(m, X, wl, names, library, library_names, mode, output, expo
                 for j,(_,row) in enumerate(selected.iterrows(),1):endmembers[f'{cls}_{j}']=X[name_to_i[row.candidate]].copy()
         elif cls in averages and np.all(np.isfinite(averages[cls])):
             endmembers[cls]=averages[cls]
+    # General scene-independent fallback for every missing configured target.
+    # Selected candidates and class averages are never modified/reassigned.
+    present = set(infer_groups(list(endmembers), m.FINAL_TARGET_CLASSES))
+    reserved = set(x3['candidate'].astype(str)) if not x3.empty else set()
+    if not used.empty:
+        reserved.update(used['candidate'].astype(str))
+    fallback_assignments, m.fallback_report = select_missing_class_fallbacks(
+        m, X, names, library_names, sam, mbdsa, summary,
+        selected_classes=present, reserved_candidates=reserved,
+    )
+    for cls in m.FINAL_TARGET_CLASSES:
+        if cls not in fallback_assignments:
+            continue
+        match = fallback_assignments[cls]
+        # Retain the convention for asphalt/concrete replicated endmembers.
+        endmember_name = f'{cls}_1' if cls in ('asphalt_road', 'concrete') else cls
+        endmembers[endmember_name] = X[match['scene_index']].copy()
+        logging.warning(
+            'FULL provisional fallback for %s: candidate=%s, SAM=%.3f degrees; '
+            'original winner=%s; ground validation still required.',
+            cls, match['detail']['candidate'], match['detail']['sam_deg'],
+            match['detail']['original_best_target_class'],
+        )
+    for item in m.fallback_report['unresolved']:
+        logging.warning('FULL class %s remains missing: %s', item['class_name'], item['reason'])
+    output.mkdir(parents=True, exist_ok=True)
+    write_json(output / 'FULL_fallback_report.json', m.fallback_report)
     if len(endmembers)<2:raise ValueError(f'{mode}: fewer than two endmembers selected; inspect candidate classes and GUSL.')
     output.mkdir(parents=True,exist_ok=True)
     for filename,frame in [('class_assignments',summary),('average_summary',avg_summary),('candidates_used',used),('bundle_selection',x3)]:frame.to_csv(output/f'{mode}_{filename}.csv',index=False)
@@ -1579,6 +1785,10 @@ def run(image, gusl, out, cfg, wavelength_file=None, source_item=None):
         ),
         'selected_bands': int(len(selected)),
         'endmember_selection': 'FULL',
+        'fallback_enabled': bool(matcher.FALLBACK_ENABLED),
+        'fallback_selected_classes': [x['class_name'] for x in matcher.fallback_report['selected']],
+        'fallback_unresolved_classes': [x['class_name'] for x in matcher.fallback_report['unresolved']],
+        'fallback_selections': matcher.fallback_report['selected'],
         'mask3_reselection': False,
         'band_selection_independent': True,
         'endmember_spectra_validated': True,
