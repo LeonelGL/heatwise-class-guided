@@ -1,0 +1,74 @@
+name: HEATWISE v0.3.1 - Reproducibility and PPI sensitivity
+
+on:
+  push:
+    branches:
+      - fix/general-class-fallback
+    paths:
+      - .github/workflows/reproducibility_audit.yml
+      - tools/audit_sepolia_reproducibility.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scientific-reproducibility:
+    name: Same-runner repeatability and spectral-band independence
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PYTHONHASHSEED: '0'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+      VECLIB_MAXIMUM_THREADS: '1'
+    steps:
+      - name: Check out repository and real input data
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          lfs: true
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements-lock-python311.txt
+      - name: Record numerical environment
+        shell: bash
+        run: |
+          python - <<'PY'
+          import numpy as np, sklearn, scipy
+          import threadpoolctl
+          import platform
+          print('Python:', platform.python_version())
+          print('Machine:', platform.platform(), platform.machine(), platform.processor())
+          print('NumPy:', np.__version__, 'SciPy:', scipy.__version__, 'scikit-learn:', sklearn.__version__)
+          print('BLAS threadpools:', threadpoolctl.threadpool_info())
+          np.show_runtime()
+          PY
+      - name: Compare repeated, band-search, and PPI-direction experiments on one runner
+        run: |
+          python tools/audit_sepolia_reproducibility.py \
+            --output-dir results/reproducibility_audit
+      - name: Upload audit report, logs, and selected spectra even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sepolia-reproducibility-${{ github.run_id }}
+          path: |
+            results/reproducibility_audit/environment.json
+            results/reproducibility_audit/audit_report.json
+            results/reproducibility_audit/*/case_config.yml
+            results/reproducibility_audit/*/case_summary.json
+            results/reproducibility_audit/*/processor.log
+            results/reproducibility_audit/*/products/run_summary.json
+            results/reproducibility_audit/*/products/selected_endmembers.xlsx
+            results/reproducibility_audit/*/products/selected_bands.json
+            results/reproducibility_audit/*/products/diagnostics/candidates.csv
+            results/reproducibility_audit/*/products/diagnostics/candidates.npz
+            results/reproducibility_audit/*/products/diagnostics/FULL_fallback_report.json
+          if-no-files-found: warn
+          retention-days: 14
