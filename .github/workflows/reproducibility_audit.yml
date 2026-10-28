@@ -1,4 +1,4 @@
-name: HEATWISE v0.3.1 - Reproducibility and PPI sensitivity
+name: HEATWISE v0.3.2 - Reproducibility and PPI sensitivity
 
 on:
   push:
@@ -65,7 +65,7 @@ jobs:
             results/reproducibility_audit/*/case_summary.json
             results/reproducibility_audit/*/processor.log
             results/reproducibility_audit/*/products/run_summary.json
-            results/reproducibility_audit/*/products/selected_endmembers.xlsx
+            results/reproducibility_audit/*/products/selected_endmembers*.xlsx
             results/reproducibility_audit/*/products/selected_bands.json
             results/reproducibility_audit/*/products/diagnostics/candidates.csv
             results/reproducibility_audit/*/products/diagnostics/candidates.npz
