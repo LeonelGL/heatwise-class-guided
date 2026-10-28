@@ -28,8 +28,9 @@ jobs:
       - name: Validate local CWL
         run: python -m cwltool --validate cwl/local/workflow.cwl
       - name: Build FULL-only container
-        run: docker build -t heatwise/class-guided:0.3.0 .
+        run: docker build -t heatwise/class-guided:0.3.1 .
       - name: Run containerized CWL on synthetic STAC input
         run: python -m cwltool --outdir results/ci cwl/workflow.cwl examples/job_synthetic.yml
       - name: Validate two scientific outputs and STAC
         run: python tools/validate_outputs.py results/ci/results
+
