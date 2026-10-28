@@ -1,0 +1,18 @@
+{
+  "seed": 42,
+  "extraction": {
+    "GAPS_UM": [[0.996, 1.9714]]
+  },
+  "matching": {
+    "MASK3_SOURCE": "fixed",
+    "MASK3_WAVELENGTHS_UM": [
+      0.467, 0.518, 0.560, 0.602, 0.661,
+      0.704, 0.763, 0.940, 0.982, 2.002,
+      2.188, 2.239, 2.281, 2.382, 2.441
+    ],
+    "MASK3_N_BANDS": 15,
+    "MASK3_MAX_DELTA_UM": 0.01
+  },
+  "vegetation_mode": "separate",
+  "export_intermediates": true
+}

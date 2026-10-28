@@ -1,9 +1,9 @@
 cwlVersion: v1.2
 class: CommandLineTool
 id: class_guided
-label: HEATWISE FULL local preprocessor
+label: HEATWISE FULL+MASK3 local preprocessor
 doc: >
-  Local execution without a DockerRequirement. Match FULL once and optimize
+  Local execution without a DockerRequirement. Match FULL and MASK3 independently and optimize
   bands independently. Scientific outputs are an endmember XLSX and band JSON.
 baseCommand:
   - python3
@@ -52,6 +52,5 @@ outputs:
       glob: results
 $namespaces:
   s: https://schema.org/
-s:softwareVersion: "0.3.1"
+s:softwareVersion: "0.3.2"
 s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided
-
