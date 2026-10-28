@@ -96,7 +96,7 @@ jobs:
           current = pd.read_excel(output / 'selected_endmembers.xlsx')
           reference = pd.read_excel('examples/output_sepolia/Endmembers_FULL.xlsx')
 
-          assert summary['version'] == '0.3.1'
+          assert summary['version'] == '0.3.2'
           assert summary['endmember_selection'] == 'FULL+MASK3'
           assert len(pd.read_excel(output / 'selected_endmembers_MASK3.xlsx')) == len(current)
           assert summary['mask3_metric_bands'] == 15
