@@ -1,9 +1,28 @@
 # HEATWISE class-guided — scientific and technical change record
 
-## Current scope: version 0.3.0 (FULL-only)
+## Current scope: version 0.3.1 (FULL-only with general missing-class fallback)
 
 **This section defines the current workflow.** Descriptions of MASK3 and
 reduced-image handoff in earlier commits or historical examples are superseded.
+
+### General missing-class fallback (introduced in 0.3.1)
+
+If a material in `FINAL_TARGET_CLASSES` is missing after ordinary FULL class
+selection, the preprocessor attempts to recover it by comparing all extracted
+scene candidates against *all GUSL spectra matching that class*, not only
+the original Top-K list. A fallback permits a target class to be a second
+or lower choice, but requires a configurable class-specific SAM ceiling;
+its default is 8 degrees, subject to independent validation. A joint
+one-to-one minimum-cost assignment maximizes the number of covered missing
+classes before minimizing total SAM. Endmembers already selected are never
+changed or reused. No material or geographical location is privileged.
+
+If no eligible unused candidate meets the SAM limit, the class remains absent;
+it is reported as unresolved rather than fabricating a spectrum. Every
+fallback is provisional and recorded in
+`diagnostics/FULL_fallback_report.json` and `run_summary.json`.
+These quality flags distinguish *forced class representation* from
+*scientifically validated material presence*. The existing FCLS is unchanged.
 
 ### Endmember selection and outputs
 
@@ -149,3 +168,4 @@ Relevant provenance details are recorded in `docs/PROVENANCE.json`.
 
 Release/license and third-party spectral-library redistribution rights
 must be approved independently before an ESA-facing publication.
+
