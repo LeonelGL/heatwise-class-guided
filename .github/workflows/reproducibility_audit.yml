@@ -1,12 +1,8 @@
 name: HEATWISE v0.3.2 - Reproducibility and PPI sensitivity
 
+# Manual diagnostic only: real Sepolia/GUSL are not distributed in the source tree.
+# Requires externally staged, authorized test data before invocation.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/reproducibility_audit.yml
-      - tools/audit_sepolia_reproducibility.py
   workflow_dispatch:
 
 permissions:
