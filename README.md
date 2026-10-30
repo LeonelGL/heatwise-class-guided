@@ -99,8 +99,8 @@ rights to redistribute the real GUSL library before an external release):
 
 ```bash
 python class_guided_processor.py \
-  --input-catalog examples/sepolia \
-  --gusl examples/resources/GUSL_spectra_by_material_headers.xlsx \
+  --input-catalog /data/sepolia_stac \
+  --gusl /data/GUSL_spectra_by_material_headers.xlsx \
   --config examples/config_sepolia_report.json \
   --output-dir results/sepolia
 ```

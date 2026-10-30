@@ -1,43 +1,51 @@
-# EOAP readiness — HEATWISE class-guided 0.3.1
+# EOAP readiness — HEATWISE class-guided v0.3.2
 
-This is an engineering readiness checklist, **not ESA certification**.
-The target operator must confirm the exact acceptance criteria.
-Prior GitHub Actions pass evidence for **0.2.0** is not evidence that
-**0.3.1** has passed.
+This is a technical delivery checklist, **not ESA certification**.
 
-| Concern | 0.3.0 implementation | Still to validate / complete |
+| Topic | Implemented and tested | Remaining |
 | --- | --- | --- |
-| Processing scope | FULL-only class-guided endmember extraction and independent band optimization | Compare with real Sepolia/GUSL reference method |
-| Scientific data output | `selected_endmembers.xlsx` and `selected_bands.json` | Full real-scene dimensional/reflectance consistency |
-| Endmember matching | SAM/MBDSA on global common finite spectral intersection | Audit which and how many bands contribute on real data |
-| Preprocessor CLI | Python 3.11; explicit image/STAC, GUSL, configuration, wavelengths and output arguments | Actual stage-in command run |
-| Input contract | STAC single Item, locally staged COG; external GUSL XLSX | Real source metadata, source library coverage |
-| Output contract | STAC catalog + Item with two scientific assets and relative diagnostic assets | Target platform stage-out validation |
-| CWL | Workflow and CommandLineTool with typed inputs | Re-run cwltool validation and containerized CWL for 0.3.1 |
-| Docker | Python 3.11 pinned dependencies; local `heatwise/class-guided:0.3.0` tag | Successful v0.3.1 Docker build; publish approved image/digest |
-| Python regression | Original-kernel parity and FULL-only synthetic tests defined | Verify green current-branch CI run and logs |
-| Reproducibility | Random seed, config, versions, input SHA-256, wavelength and band indices, diagnostics | Validate complete real experiment |
-| Handoff to official FCLS | Endmember XLSX and original full raster expected; band JSON independent | Check wavelength interpolation, missing bands and scale on real image |
-| Provenance/license | `reference/` originals, `docs/PROVENANCE.json`, `NOTICE.md` | Agree publication license, third-party GUSL rights |
-| Spectral provenance | Real wavelengths required; no fabricated sensor centers | Confirm Sepolia V2 wavelength grid and acquisition time |
-| Scientific accuracy | Synthetic tests only for this package | Ground-truth evaluation and per-material uncertainty |
-| Repository integrity | `MANIFEST_SHA256.json` | Regenerate after all final code/docs commits |
+| Scientific processing | FULL → optimized 15 wavelengths → independent MASK3; both export full-length endmember spectra | Class accuracy/parameter optimality are not certified |
+| Python CLI and dependencies | Python 3.11; pinned lockfile; synthetic regression tests | Reconfirm execution on each official tagged release |
+| EOAP stage-in | STAC input Directory, GUSL File, config File, optional wavelengths File | Authorized inputs must be staged externally |
+| EOAP stage-out | Output Directory, relative STAC assets and dual Excel/JSON products | Consumer-specific platform staging review |
+| Docker | Container build and synthetic CWL execution passed | Publish tag-specific image on final organization |
+| CWL | Workflow and CommandLineTool; packaged Python; self-contained release CWL generated and validated | Final versioned release in ESA organization |
+| GitHub releases | Automated version-pinned workflow prepared | Requires approved LICENSE and final tag |
+| Real Sepolia v2 | 250-band scene and GUSL validated on 2026-10-28 | New runs require externally staged files |
+| Input/licensing rights | No real GUSL/Sepolia assets in current delivery tree; restrictions documented | Explicit source-code license and third-party data permissions |
+| Provenance | Original algorithm reference scripts retained; SHA-256 manifest with CI checking | Update after any final source changes |
+| FCLS handoff | Spectral interface preflight completed | Run actual downstream HySUPP FCLS separately |
+| Reproducibility | Input hashes, configurable seed and diagnostics | Investigate cross-run candidate variations before claims of exact numerical reproducibility |
 
-**Historical evidence (0.2.0 only):** GitHub Actions run
-[40362481432](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40362481432)
-was reported as successful for the previous reduced-COG/MASK3-based
-interface. It must not be represented as v0.3.1 acceptance.
+## Verification evidence
 
-Open issues include the global finite intersection across GUSL signatures,
-the unparsed `GUSL_catalog_all.csv`, the inability to infer a precise Sepolia
-acquisition timestamp from only its reported date (2009-07-18), and the
-need to confirm endmember-to-full-raster compatibility with FCLS.
+- Synthetic Python, Docker, STAC and CWL processing:
+  https://github.com/LeonelGL/heatwise-class-guided/actions/runs/41089164849
+- Full Sepolia v2 and GUSL dual-selection preflight:
+  https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40743012798
+- Versioned CWL preparation and packaging:
+  https://github.com/LeonelGL/heatwise-class-guided/actions/runs/41090729518
 
-## General missing-class fallback — v0.3.1
+The 250 original sensor bands reduced to 124 usable output wavelengths, 103
+common FULL/GUSL comparison wavelengths and 15 MASK3 matching wavelengths
+in the referenced Sepolia run. Endmember tables still retain all 124
+wavelengths; no FCLS was executed.
 
-Implemented for all configured target classes, not only for specific
-materials or geographical scenes. It uses the FULL SAM matrices, an angular
-ceiling and distinct unused scene candidates. Each provisional assignment,
-its GUSL match, competitor and rejected/absent class are logged. This is
-**not** evidence that the missing class was genuinely present. Test the
-fallback against real ground validation and class confusion statistics.
+## Known scope limitations
+
+GUSL interpolation, FULL common-finite-band reduction, SAM/MBDSA acceptance
+and PPI instability are scientific considerations requiring further study.
+A provisional fallback class is a spectral assignment, not validated material
+presence. The supplied GUSL_catalog_all.csv is not parsed by the algorithm.
+The precise Sepolia acquisition time/timezone is not inferred from its date.
+
+## Required administrative approvals
+
+1. Choose and approve a source-code license, identify the rightful copyright
+   holder(s), and add the corresponding LICENSE. Hannes asked that every
+   open-source software deliverable include one, but did not select a license
+   for this processor.
+2. Confirm redistribution conditions for the real GUSL spectral library and
+   mimicked Sepolia inputs. These are not included in the current source tree.
+3. Decide the final version number and target repository with the project
+   maintainers. No formal release or container publication has occurred.

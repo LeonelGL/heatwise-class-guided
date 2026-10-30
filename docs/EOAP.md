@@ -1,75 +1,86 @@
-# HEATWISE class-guided v0.3.1 — EOAP processing boundary
+# HEATWISE class-guided v0.3.2 — EO Application Package
 
-## Scope
+## Purpose and processing boundary
 
-The package is a **preprocessor**, not the official unmixing application.
-It receives one locally staged STAC raster scene, an explicitly supplied
-GUSL XLSX, configuration, and optionally original-band wavelength centers.
+This is an independent OGC EO Application Package (EOAP) preprocessor. It
+receives a locally staged, single-item STAC catalog with a CHIME-like COG,
+an externally supplied GUSL spectral library (XLSX), a configuration file,
+and optionally a text file of original sensor band wavelengths (micrometers).
 
-The package outputs precisely two **scientific data products**:
+Processing stages: finite-band screening; scene-based PCA/PPI candidate extraction;
+GUSL interpolation; class-guided FULL SAM/MBDSA matching; selection of 15
+discriminative bands from FULL endmembers; independent MASK3 matching on the
+15 selected bands; and export of full-length spectral signatures for both
+selection modes.
 
-1. `selected_endmembers.xlsx` — FULL class-guided endmembers on all usable
-   scene wavelengths, intended for a separate FCLS consumer.
-2. `selected_bands.json` — 15 selected bands and their metadata, computed
-   independently after the FULL endmembers are fixed.
+## Scientific products and metadata
 
-Other files in the output Directory (e.g. run summary, diagnostics,
-band-selection workbook, catalog) document execution. They are not
-additional scientific image/classification/abundance products.
+- selected_endmembers_FULL.xlsx — FULL-selected endmember spectra, retaining
+  all usable scene wavelengths (124 in the Sepolia v2 reference run).
+- selected_endmembers_MASK3.xlsx — independently MASK3-selected signatures,
+  retaining the same complete usable wavelength grid.
+- selected_endmembers.xlsx — exact compatibility alias of FULL for the unchanged
+  ESA HySUPP/FCLS input contract.
+- selected_bands.json — 15 selected bands, indices, and selection configuration.
+- mask3_matching_bands.json — the 15 wavelengths actually used by MASK3.
 
-No MASK3 re-matching, no reduced scene COG, no MAT file, and no FCLS solver
-or postprocessing occurs in this application.
+Both modes have separate diagnostic files, fallback provenance and quality flags.
+run_summary.json, effective_config.json, catalog.json and item.json provide
+provenance and STAC stage-out metadata. The workflow returns one output
+Directory containing these assets; STAC links to files using relative paths.
 
-## Packaging components
+No FCLS is run in this EOAP. The selected-band list is NOT supplied to FCLS.
+No reduced-band raster, abundance map, classification map, or MAT file is
+generated. This preprocessor cannot independently verify a material's identity.
+Fallback matches are explicitly provisional.
 
-- `cwl/workflow.cwl`: EOAP-oriented CWL Workflow exposing input catalog,
-  GUSL, configuration and optional wavelength file; output is a Directory.
-- `cwl/preprocess.cwl`: corresponding CommandLineTool, explicit CLI
-  bindings and `DockerRequirement` for local image tag
-  `heatwise/class-guided:0.3.1`.
-- `cwl/local/workflow.cwl` and `cwl/local/preprocess.cwl`: local no-Docker
-  variants, used only with an installed Python environment.
-- `Dockerfile`: Python 3.11 implementation and pinned dependencies.
-- `catalog.json` and `item.json`: STAC output links with the two scientific
-  files marked as data assets, other files as metadata assets.
-- `tools/validate_outputs.py`: checks the FULL-only product schema, band
-  indices, STAC integrity and prohibition of generated raster products.
+## Executable package and stage-in
 
-The output Item inherits temporal context from the input STAC Item where
-available, and the source raster supplies geographic footprint. The
-**original image is not an output asset**. This is important because its
-input-stage location must not be mistaken for a persistent EOAP product.
+- cwl/workflow.cwl — CWL 1.2 Workflow with four typed inputs and one output
+  Directory. References the sibling cwl/preprocess.cwl.
+- cwl/preprocess.cwl — CommandLineTool with one DockerRequirement, executing
+  /app/class_guided_processor.py inside the image (without an external script).
+- cwl/local/* — no-Docker local development equivalents.
+- Dockerfile — Python 3.11 and pinned dependencies.
+- tools/validate_outputs.py — validates the dual exports, STAC links, band
+  indices and absence of reduced-raster/unmixing products.
 
-## External unmixing handoff
+Inputs must be staged separately for each deployment. The production source
+tree and published container do not embed the original real GUSL library or
+real Sepolia test scene; only synthetic regression fixtures are included.
+Library and image redistribution, where needed, require an independent
+documented rights decision.
 
-The unchanged official ESA-Heatwise FCLS processor consumes the input
-hyperspectral raster **separately** from the FULL endmember XLSX.
-The independent JSON band selection is **not passed to FCLS**.
+## Version-fixed delivery
 
-The endmember spreadsheet contains usable wavelengths, which may exclude
-invalid sensor bands. Therefore actual consumer-side spectral alignment,
-interpolation/masking behavior and radiometric scale must be verified
-using the *real* original raster and official consumer code. No claim of
-validated direct compatibility follows solely from synthetic tests.
+ESA requires versioned EOAP releases, with non-moving Docker image references.
+tools/prepare_release.py creates release-specific versions of BOTH CWLs;
+cwltool --pack makes one standalone heatwise_class_guided.cwl.
+.github/workflows/release.yml runs for version tags such as v0.3.2 and:
+- checks a nonempty approved LICENSE and the absence of real input datasets;
+- regenerates/validates the release CWLs, runs tests and a Docker/CWL synthetic
+  smoke test with the release image;
+- publishes the version-specific image to ghcr.io/<owner>/<repo>:<version>;
+- creates a GitHub Release attaching the packed CWL and original paired CWLs.
 
-## Status and remaining requirements
+Source CWLs stay unchanged and may retain a local development Docker tag.
+The release CWL uses the published image with an exact immutable *version
+name*. Protect tags and image tags from reassignment as a project policy.
 
-The code is structured for CWL/OGC EOAP-style packaging, but
-**this is not ESA platform approval or certification**. The current
-branch's full CI/Docker/CWL outcome and real-scene Sepolia/GUSL run must
-be checked after the v0.3.1 updates are committed.
+The software licensing decision is pending; the existence of an open-source
+publication policy is not a license grant. No formal release may proceed
+without a project-authorized LICENSE.
 
-Before delivery, confirm: target-platform stage-in/stage-out behavior,
-published container image pinned by digest, source licensing, GUSL
-distribution rights, metadata and band alignment, scientific results
-against reference validation points, and documented reproducibility.
+## Interoperability and evidence
 
-## Missing-class provenance
+Automated synthetic and dual-mode CI tests passed for the v0.3.2 processing
+chain, and Sepolia real-scene preflight passed on 2026-10-28:
+https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40743012798
 
-The general FULL fallback is enabled by default and operates on every missing
-`FINAL_TARGET_CLASSES` material, independently of city. Fallback endmembers
-are included in the same scientific XLSX with full usable spectra, but
-annotated as **provisional** in diagnostic JSON/run metadata. If no unused
-candidate meets the configured SAM limit, the class is unresolved and must
-not be presented as observed or verified.
+The separate CWL packaging test is executed by the pull-request CI. These
+tests do not establish ESA-platform certification or a full downstream FCLS
+run. A new real-scene experiment requires the authorized data to be restaged.
 
+The original image must be provided independently, together with either FULL
+or MASK3 endmember XLSX, to the official HySUPP/FCLS processor:
+https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing

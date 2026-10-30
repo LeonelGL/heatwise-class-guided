@@ -47,14 +47,14 @@ The original Sepolia report used an older nominal wavelength grid. The fixed
 paper mask example therefore serves to **test** that mask against CHIME v2; it
 does not establish identity with the original paper endmember collection.
 
-## Commands (in the original complete repository)
+## Commands (with externally staged authorized datasets)
 
 Automatic MASK3 (keeps existing Sepolia scientific configuration):
 
 ```bash
 python class_guided_processor.py \
-  --input-catalog examples/sepolia \
-  --gusl examples/resources/GUSL_spectra_by_material_headers.xlsx \
+  --input-catalog /data/sepolia_stac \
+  --gusl /data/GUSL_spectra_by_material_headers.xlsx \
   --config examples/config_sepolia_report.json \
   --output-dir results/sepolia_dual
 ```
@@ -62,8 +62,8 @@ python class_guided_processor.py \
 For fixed MASK3, use the supplied `examples/config_dual_paper_sepolia.json`
 (or merge its `matching.MASK3_*` settings into the existing Sepolia config).
 
-Important: The input directory and GUSL XLSX are large real datasets and are
-**not bundled** into this patch archive. The existing repo supplies them.
+Important: the real Sepolia image and GUSL XLSX are **not included** in the
+current delivery tree. Stage authorized inputs at deployment time.
 
 ## ESA/EOAP compatibility and versioning
 
@@ -71,7 +71,8 @@ Version 0.3.2 changes the output contract from 2 main products to a dual-mode
 contract and adds STAC assets and metadata. The legacy `selected_endmembers.xlsx`
 remains an exact alias of FULL to protect previously integrated FCLS consumers,
 but `tools/validate_outputs.py`, scientific tests, workflows, Docker/CWL tags,
-and the SHA-256 manifest must be updated together in a new branch. The official
+and the SHA-256 manifest must be updated together. Changes are made in the
+existing feature/dual-full-mask3 branch until the project approves a release. The official
 FCLS processor is not modified by this patch.
 
 ## Verification
@@ -79,5 +80,5 @@ FCLS processor is not modified by this patch.
 The new synthetic integration tests check both exported matrices on identical
 full spectral grids, that MASK3 computes similarity only on selected bands,
 that the fixed wavelength tolerance is enforced, and that the FULL alias
-remains identical to the explicit FULL file. Real Sepolia and full ESA pipeline
-verification must be rerun in GitHub Actions after installation.
+remains identical to the explicit FULL file. Real Sepolia dual-mode preflight passed on 2026-10-28 in GitHub Actions run
+40743012798. The complete downstream HySUPP/FCLS pipeline was not executed.

@@ -3,7 +3,7 @@ name: HEATWISE v0.3.2 - Reproducibility and PPI sensitivity
 on:
   push:
     branches:
-      - fix/general-class-fallback
+      - main
     paths:
       - .github/workflows/reproducibility_audit.yml
       - tools/audit_sepolia_reproducibility.py
@@ -36,6 +36,13 @@ jobs:
           python-version: '3.11'
       - name: Install pinned dependencies
         run: python -m pip install -r requirements-lock-python311.txt
+      - name: Require explicitly staged real datasets
+        shell: bash
+        run: |
+          if [[ ! -f examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif || ! -f examples/resources/GUSL_spectra_by_material_headers.xlsx ]]; then
+            echo "::error::Real-data reproducibility requires separately authorized GUSL/Sepolia stage-in. These files are excluded from the release source tree." >&2
+            exit 1
+          fi
       - name: Record numerical environment
         shell: bash
         run: |

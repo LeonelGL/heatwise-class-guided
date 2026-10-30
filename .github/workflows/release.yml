@@ -47,6 +47,12 @@ jobs:
             exit 1
           fi
           test -s NOTICE.md
+          for file in examples/resources/GUSL_spectra_by_material_headers.xlsx examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif; do
+            if [[ -e "$file" ]]; then
+              echo "::error::Remove real dataset $file before publishing; rights have not been confirmed." >&2
+              exit 1
+            fi
+          done
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -55,6 +61,9 @@ jobs:
 
       - name: Install pinned dependencies
         run: python -m pip install -r requirements-lock-python311.txt
+
+      - name: Check committed SHA256 manifest
+        run: python tools/refresh_manifest_v032.py --check
 
       - name: Run scientific regression tests
         run: python -m pytest tests -q

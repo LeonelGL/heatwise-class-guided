@@ -46,10 +46,21 @@ Run from the repository root:
 
 The pull-request validation workflow performs these checks automatically.
 
+## Data and licensing requirements
+
+The source branch excludes real Sepolia and GUSL assets. Only synthetic fixtures
+may be committed without additional redistribution review. The release
+workflow checks both an approved LICENSE and that the known real-data paths
+are absent. The software reuse record must name the selected source license.
+
+The release container is not a dataset distribution mechanism. Inputs are
+supplied separately by the EOAP runner, subject to their own licenses.
+
 ## Before creating the first formal ESA tag
 
 - Obtain authorization for the source-code LICENSE and confirm whether the
-  actual Sepolia image and real GUSL XLSX may be redistributed.
+  actual Sepolia image and real GUSL XLSX may be redistributed. The current
+  delivery tree excludes them pending that decision.
 - Review the repository and CWL input/output contract with Hannes.
 - Move or mirror the approved final code into ESA-Heatwise, as agreed with
   the project team. The workflow automatically publishes to the namespace
