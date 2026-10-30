@@ -32,3 +32,13 @@ jobs:
         run: python -m cwltool --outdir results/ci cwl/workflow.cwl examples/job_synthetic.yml
       - name: Validate dual-mode endmembers, optimized bands and STAC
         run: python tools/validate_outputs.py results/ci/results
+      - name: Prepare v0.3.2 release CWLs without publishing
+        run: |
+          python tools/prepare_release.py \
+            --version 0.3.2 \
+            --image ghcr.io/leonelgl/heatwise-class-guided:0.3.2 \
+            --repository-url https://github.com/LeonelGL/heatwise-class-guided \
+            --output-dir results/release-smoke
+          python -m cwltool --validate results/release-smoke/cwl/workflow.cwl
+          python -m cwltool --pack results/release-smoke/cwl/workflow.cwl > results/release-smoke/heatwise_class_guided.cwl
+          python -m cwltool --validate results/release-smoke/heatwise_class_guided.cwl

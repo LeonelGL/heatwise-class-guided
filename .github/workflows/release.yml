@@ -1,0 +1,122 @@
+name: Release versioned EOAP
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: eoap-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set exact version, repository and GHCR target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::error::Release tags must be vMAJOR.MINOR.PATCH (optionally -prerelease)" >&2
+            exit 1
+          fi
+          VERSION="$GITHUB_REF_NAME"
+          VERSION="${VERSION#v}"
+          REPO_LOWER=$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/$REPO_LOWER:$VERSION" >> "$GITHUB_ENV"
+          echo "REPO_URL=https://github.com/$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
+
+      - name: Require approved source license before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -s LICENSE ]]; then
+            echo "::error::LICENSE missing. Obtain a project-approved license before publishing an ESA EOAP." >&2
+            exit 1
+          fi
+          test -s NOTICE.md
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements-lock-python311.txt
+
+      - name: Run scientific regression tests
+        run: python -m pytest tests -q
+
+      - name: Generate release-specific CWL pair and ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/prepare_release.py \
+            --version "$VERSION" \
+            --image "$IMAGE" \
+            --repository-url "$REPO_URL" \
+            --output-dir release_dist
+
+      - name: Package autonomous single-file CWL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m cwltool --validate release_dist/cwl/workflow.cwl
+          python -m cwltool --validate release_dist/cwl/preprocess.cwl
+          python -m cwltool --pack release_dist/cwl/workflow.cwl > release_dist/heatwise_class_guided.cwl
+          python -m cwltool --validate release_dist/heatwise_class_guided.cwl
+
+      - name: Build versioned Docker image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg "RELEASE_VERSION=$VERSION" \
+            --build-arg "SOURCE_REPOSITORY=$REPO_URL" \
+            --tag "$IMAGE" .
+
+      - name: Smoke-test release CWL inside its release Docker image
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m cwltool \
+            --outdir results/release-ci \
+            release_dist/heatwise_class_guided.cwl \
+            examples/job_synthetic.yml
+          python tools/validate_outputs.py results/release-ci/results
+
+      - name: Log in to GHCR
+        shell: bash
+        run: |
+          printf '%s' "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+            -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push versioned Docker image
+        shell: bash
+        run: docker push "$IMAGE"
+
+      - name: Create GitHub release with fixed CWL assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release_dist/heatwise_class_guided.cwl
+            release_dist/heatwise-class-guided-cwl-*.zip
+            release_dist/workflow.cwl
+            release_dist/preprocess.cwl
+            README.md
+            NOTICE.md
+            LICENSE
