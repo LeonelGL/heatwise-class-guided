@@ -1,10 +1,9 @@
 # HEATWISE class-guided endmember and band preprocessor
 
-**Version 0.3.1 — FULL class-guided endmembers with general missing-class fallback**
+**Version 0.3.2 — dual FULL / MASK3 class-guided endmember selection**
 
 This repository implements a scene-specific, ground-truth-independent workflow
-for hyperspectral urban material characterization. It prepares two scientific
-products for a CHIME-like scene. It **does not perform FCLS unmixing**.
+for hyperspectral urban material characterization. It exports separately selected FULL and MASK3 endmember libraries and a scene-specific selection of 15 discriminative bands. It **does not perform FCLS unmixing**.
 
 ## Scientific methodology
 
@@ -30,9 +29,11 @@ products for a CHIME-like scene. It **does not perform FCLS unmixing**.
    remains unrepresented and is explicitly reported. The recovered spectrum
    is a scene-derived candidate, not a copied GUSL spectrum. These are
    provisional material labels, **not independently validated identities**.
-7. Export the selected endmembers with **all usable spectral wavelengths**.
-8. Independently optimize 15 discriminative bands from the already-selected
-   FULL endmembers. **Do not rerun matching or alter endmembers**.
+7. Independently optimize 15 discriminative bands from the FULL-selected endmembers.
+8. **Rerun class-guided matching on the original candidate pool using only these 15
+   bands (MASK3)**, including mode-specific quality flags and fallback decisions.
+9. Export separate FULL and MASK3 endmember libraries, both retaining **all usable
+   spectral wavelengths**, not just the 15 matching bands.
 
 The default report configuration evaluates 500,000 15-band combinations drawn
 from 100 preselected bands and then recommends 15 wavelengths subject to at least
@@ -45,23 +46,38 @@ usable image bands, although final endmember signatures retain the complete
 usable scene grid. This limitation is documented and must be assessed on real
 Sepolia/GUSL inputs.
 
-The word FULL distinguishes this workflow from the historical second-pass
-MASK3 method. There is **no MASK3 re-matching** in version 0.3.1.
+FULL matching uses the global set of common finite spectral bands, while MASK3
+uses the 15 selected bands to reassess and reselect endmembers independently.
+The 15-band selection **does not change the already selected FULL endmembers**.
 
-## Scientific outputs: exactly two
+## Outputs and FCLS interoperability
 
-| File | Description | Consumer |
-| --- | --- | --- |
-| `selected_endmembers.xlsx` | Wavelengths in µm (first column) and one reflectance column per FULL-selected endmember; all usable scene wavelengths | External official FCLS processor |
-| `selected_bands.json` | The independently optimized 15 wavelengths, original raster band indices (zero- and one-based), selection indices and methodological diagnostics | Spectral band analysis; **not an FCLS input** |
+| Output file | Description |
+| --- | --- |
+| `selected_endmembers_FULL.xlsx` | FULL-selected endmember spectra, all usable scene wavelengths. |
+| `selected_endmembers_MASK3.xlsx` | Independently MASK3-selected endmember spectra, all usable scene wavelengths. |
+| `selected_endmembers.xlsx` | Backward-compatible alias identical to the FULL spreadsheet; preserves the existing ESA HySUPP input contract. |
+| `selected_bands.json` | The 15 optimized wavelengths, raster band indices and selection diagnostics. |
+| `mask3_matching_bands.json` | The 15 actual wavelengths and indices used in MASK3 matching. |
 
-A separate `diagnostics/` folder, configuration, run summary and a
-`catalog.json`/`item.json` STAC catalog support reproducibility and ESA-style
-stage-out. These are **supporting files, not additional scientific products**.
+All endmember spreadsheets contain a first wavelength column (`wavelength_um`)
+and one reflectance column per selected endmember. These are **scene-derived
+candidate signatures**, not direct exports of GUSL spectra. Some classes have
+multiple endmembers. Fallback class identities are explicitly marked
+provisional in the diagnostics.
 
-The output directory contains **no reduced image**, no MASK3 endmember
-spreadsheet, no `.mat` data, and no abundance/classification rasters.
-The input raster is **not copied or modified**.
+Additional `diagnostics/` files, `run_summary.json`, `effective_config.json`,
+and STAC `catalog.json` / `item.json` provide reproducibility information.
+This program does not create a reduced-band raster, abundance maps,
+classification maps, or a `.mat` file. It does not modify the source image.
+
+The separate official [ESA-Heatwise HySUPP unmixing
+processor](https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing) accepts
+the original image and an endmember XLSX. FULL and MASK3 may each be
+evaluated as **alternative endmember inputs**. The selected-band JSON is
+diagnostic, **not a required FCLS input**. A spectral alignment preflight
+has been performed; actual end-to-end FCLS operation and scientific
+accuracy remain to be independently verified.
 
 ## Installation
 
@@ -78,12 +94,13 @@ python -m pip install -r requirements-lock-python311.txt
 
 ## Usage with the real scene
 
-Example (adjust paths; files are not included in the repository):
+Example using the Sepolia test assets currently in this repository (confirm
+rights to redistribute the real GUSL library before an external release):
 
 ```bash
 python class_guided_processor.py \
-  --image /data/Sepolia_CHIME_v2.tif \
-  --gusl /data/GUSL_spectra_by_material_headers.xlsx \
+  --input-catalog examples/sepolia \
+  --gusl examples/resources/GUSL_spectra_by_material_headers.xlsx \
   --config examples/config_sepolia_report.json \
   --output-dir results/sepolia
 ```
@@ -127,7 +144,7 @@ wavelengths against the real Sepolia inputs.
 
 The external repository
 [ESA-Heatwise/heatwise-hysupp-unmixing](https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing)
-remains **unchanged**. It accepts the original input image and the exported
+remains **unchanged**. It accepts the original input image and either exported
 endmember table. The independently selected 15-band JSON is **not passed** to
 the official FCLS processor.
 
@@ -153,7 +170,7 @@ python -m cwltool --validate cwl/local/workflow.cwl
 Build a local image (the tag is not evidence of a published registry image):
 
 ```bash
-docker build -t heatwise/class-guided:0.3.1 .
+docker build -t heatwise/class-guided:0.3.2 .
 python -m cwltool --outdir results/cwl cwl/workflow.cwl examples/job_synthetic.yml
 python tools/validate_outputs.py results/cwl/results
 ```
@@ -163,21 +180,48 @@ runs without Docker. GitHub Actions tests both declarations and runs the
 containerized synthetic workflow. It does not execute official FCLS.
 
 The `examples/output`, `examples/output_250`, and `examples/output_500k`
-folders, if present, are **historical synthetic outputs of the old interface**
-and must **not** be treated as examples generated by version 0.3.1.
-Their legacy MASK3 content is not part of the current output contract.
+folders, if present, are **historical outputs of older interfaces**
+and must **not** be treated as outputs of version 0.3.2.
 
-## Validation and release status
+## Real Sepolia validation and ESA delivery status
 
-See `VALIDATION_REPORT.md`, `docs/CHANGES.md`, `docs/EOAP.md` and
-`docs/EOAP_READINESS.md` for reproducibility, algorithmic limitations and
-ESA-facing packaging requirements.
+The current branch `feature/dual-full-mask3` passed:
 
-Previously reported CI successes refer to **version 0.2.0**, not to this
-new workflow. Tests/CI must be rerun after every update. Validation with the
-actual Sepolia CHIME-like v2 scene and complete GUSL resources, a registry
-image pinned by digest, platform stage-in/stage-out and scientific accuracy
-evaluation remain pending. No ESA qualification is claimed.
+- [Python, Docker/CWL and synthetic validation (run 40742619588)](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40742619588).
+- [Real Sepolia CHIME-like v2 and GUSL FULL/MASK3 preflight (run 40743012798)](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40743012798).
+
+The latter used the Sepolia-specific configuration with 20,000 random PPI
+projections, up to 1,000 PPI candidates per stratum, 300 maximum final urban
+candidates, and 500,000 sampled combinations of 15 bands. It reported
+250 input image bands, 124 usable output wavelengths, 103 FULL/GUSL
+comparison bands, 15 MASK3 comparison bands, and 9 endmember signatures
+per library. A total of 277 scene candidates entered matching.
+These settings are **not universal defaults**; see
+`examples/config_sepolia_report.json`.
+
+These successful checks establish executable behavior and the **spectral
+FCLS handoff preflight only**. They do not establish independently validated
+material classes, FCLS abundance accuracy, full-system interoperability,
+or ESA acceptance. Earlier independent executions showed changes in some
+FULL candidates with nominally unchanged upstream settings; repeatability
+should be audited before claiming bitwise deterministic results.
+
+The official delivery must meet the EO Application Package (EOAP)
+requirements. In particular, ESA requests a **fixed-version GitHub Release
+with version-specific CWL and Docker image**, rather than reliance on a
+moving `latest` image tag. Hannes Neuschmidt's
+[release workflow example (ESA-Heatwise/heatwise-patch-extraction PR #3)](https://github.com/ESA-Heatwise/heatwise-patch-extraction/pull/3)
+is the intended model. This development repository does **not** yet
+publish an ESA-Heatwise release or a versioned GHCR container.
+
+Before publication, update the remaining CWL and technical reports,
+regenerate `MANIFEST_SHA256.json`, finalize the project-approved software
+license, clarify GUSL/image redistribution permissions, and arrange
+EOAP review and release in the ESA-Heatwise organization.
+
+Additional methodology and output details:
+`docs/DUAL_SELECTION_V032.md`, `docs/GENERAL_CLASS_FALLBACK.md`,
+`docs/EOAP.md`, and `docs/EOAP_READINESS.md`.
 
 ## General missing-class fallback configuration
 
