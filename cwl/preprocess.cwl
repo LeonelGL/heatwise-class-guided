@@ -3,18 +3,20 @@ class: CommandLineTool
 id: class_guided
 label: HEATWISE FULL and MASK3 class-guided preprocessor
 doc: >
-  Extract scene candidates, match independently using FULL and 15-band MASK3,
-  and select discriminative bands independently. Output selected_endmembers.xlsx
-  selected_endmembers_FULL.xlsx, selected_endmembers_MASK3.xlsx,
-  and selected_bands.json, plus diagnostics. Both endmember files contain all usable spectral bands. Do not run FCLS or generate reduced raster products.
+  Extract scene-derived candidates, perform FULL spectral matching, optimize
+  15 bands from FULL endmembers and independently re-match using MASK3.
+  Export full-length selected_endmembers_FULL.xlsx and
+  selected_endmembers_MASK3.xlsx, backward-compatible selected_endmembers.xlsx
+  (FULL), selected_bands.json, mask3_matching_bands.json, diagnostics and STAC.
+  All exported signatures retain all usable image bands. No FCLS or reduced
+  image products are generated.
 baseCommand:
   - python3
+  - /app/class_guided_processor.py
 requirements:
   DockerRequirement:
     dockerPull: heatwise/class-guided:0.3.2
 arguments:
-  - position: 0
-    valueFrom: $(inputs.processor.path)
   - --output-dir
   - results
 inputs:
@@ -42,13 +44,6 @@ inputs:
     doc: Optional original image-band centers in micrometers.
     inputBinding:
       prefix: --wavelengths
-  - id: processor
-    type: File
-    label: Python processor
-    doc: Integrated Python scientific processor supplied with the workflow.
-    default:
-      class: File
-      location: ../class_guided_processor.py
 outputs:
   products:
     type: Directory
@@ -57,4 +52,5 @@ outputs:
 $namespaces:
   s: https://schema.org/
 s:softwareVersion: "0.3.2"
+s:version: "0.3.2"
 s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided

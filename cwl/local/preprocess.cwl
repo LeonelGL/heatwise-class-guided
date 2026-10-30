@@ -3,8 +3,10 @@ class: CommandLineTool
 id: class_guided
 label: HEATWISE FULL+MASK3 local preprocessor
 doc: >
-  Local execution without a DockerRequirement. Match FULL and MASK3 independently and optimize
-  bands independently. Scientific outputs are an endmember XLSX and band JSON.
+  Local no-Docker execution. Extract candidates, select FULL endmembers,
+  optimize 15 bands, then independently reselect MASK3 endmembers.
+  Export full-length FULL and MASK3 tables, a FULL alias, band-selection
+  metadata and diagnostics. Does not execute FCLS or create reduced rasters.
 baseCommand:
   - python3
 requirements: {}
@@ -53,4 +55,5 @@ outputs:
 $namespaces:
   s: https://schema.org/
 s:softwareVersion: "0.3.2"
+s:version: "0.3.2"
 s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided

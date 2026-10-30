@@ -1,11 +1,14 @@
 cwlVersion: v1.2
 class: Workflow
 id: main
-label: HEATWISE FULL class-guided endmembers and band selection
+label: HEATWISE class-guided FULL + MASK3 endmember and band selection
 doc: >
-  EOAP-style workflow. Select endmembers once using FULL spectral matching
-  against GUSL; optimize 15 bands independently. Emit two scientific files
-  plus diagnostic metadata. No MASK3, reduced raster, or FCLS execution.
+  EOAP-style workflow. Extract scene-derived candidates and match against GUSL
+  using FULL spectral information. Select 15 bands from FULL endmembers;
+  independently re-match the same candidates on those bands (MASK3).
+  Export full-length endmember libraries for both modes, a FULL compatibility
+  alias, optimized-band metadata, diagnostics and STAC output. No FCLS
+  unmixing, reduced raster or ground-truth validation.
 inputs:
   - id: input_catalog
     type: Directory
@@ -40,4 +43,5 @@ outputs:
 $namespaces:
   s: https://schema.org/
 s:softwareVersion: "0.3.2"
+s:version: "0.3.2"
 s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided
