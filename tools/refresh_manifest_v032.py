@@ -65,6 +65,8 @@ def main() -> None:
         extra = sorted(set(actual) - set(expected))
         wrong = sorted(p for p in expected.keys() & actual.keys() if actual[p] != expected[p])
         if missing or extra or wrong:
+            print("Expected complete source SHA256 manifest (for repair):")
+            print(json.dumps(expected, indent=2, sort_keys=True))
             raise SystemExit(
                 f"Manifest mismatch: missing={missing}, extra={extra}, sha_changed={wrong}. "
                 "Regenerate by running python tools/refresh_manifest_v032.py and commit the updated manifest."
