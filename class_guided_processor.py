@@ -2,6 +2,7 @@
 """HEATWISE scene-specific class-guided processor, Python 3.11.
 Scientific kernels ported from the three supplied scripts; see docs/CHANGES.md.
 No runtime dependency on those scripts and no subprocess scientific stages.
+Select endmembers twice (FULL / MASK3), always exporting complete usable spectra.
 """
 from __future__ import annotations
 import argparse, copy, hashlib, importlib.metadata, json, logging, math, random, re, sys
@@ -16,7 +17,7 @@ from scipy.interpolate import PchipInterpolator
 from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 import yaml
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 
 class Configurable:
     def __init__(self, overrides=None):
@@ -1098,6 +1099,13 @@ class BandSelection(Configurable):
 Matching.DEFAULTS.update({'MATCH_RANK_METRIC': 'mbdsa', 'CLASS_ASSIGNMENT_METRIC': 'sam', 'USE_ACCEPTANCE_THRESHOLDS': False, 'MAX_ACCEPTED_SAM_DEG': 8.0, 'MAX_ACCEPTED_MBDSA': 0.12, 'MIN_MARGIN_TO_2ND_SAM_DEG': 1.0, 'MIN_MARGIN_TO_2ND_MBDSA': 0.01, 'X3_WEIGHT_CLASS_SCORE': 0.5, 'X3_WEIGHT_PAIR_MARGIN': 0.35, 'X3_WEIGHT_DIVERSITY': 0.15, 'GUSL_SHEETS': ['BRUSSELS_APEX_GENLIB', 'DLR'], 'TOP_K': 50, 'TOP_X_MATERIALS_FOR_AVERAGE': 3, 'FINAL_TARGET_CLASSES': ['asphalt_road', 'concrete', 'metal', 'terracota', 'vegetation'], 'ASPHALT_CONCRETE_X3_COUNT': 3})
 BandSelection.DEFAULTS.update({'REG_EPS': 1e-06, 'PRESELECT_TOP_BANDS': 100, 'BANDS_PER_COMBO': 15, 'N_RANDOM_COMBINATIONS': 500000, 'TOP_N_COMBINATIONS': 100, 'N_FINAL_BANDS': 15, 'MIN_SPACING_UM': 0.04, 'PREPROCESS_MODE': 'none'})
 
+Matching.DEFAULTS.update({
+    'MASK3_SOURCE': 'auto',
+    'MASK3_WAVELENGTHS_UM': [],
+    'MASK3_MAX_DELTA_UM': 0.01,
+    'MASK3_N_BANDS': 15,
+})
+
 Matching.DEFAULTS["TARGET_CLASS_PREFIXES"] = {'asphalt_road': ['Asphalt'], 'concrete': ['Concrete'], 'metal': ['Metal', 'Roof', 'Zinc'], 'terracota': ['Terracotta', 'Clay', 'Tile'], 'vegetation': ['Vegetation'], 'bitumen_aux': ['Bitumen'], 'soil_aux': ['Soil'], 'water_aux': ['Water']}
 
 BandSelection.DEFAULTS.update(WL_MIN=None, WL_MAX=None, INVALID_INTERVALS_UM=[])
@@ -1213,9 +1221,9 @@ def extract_candidates(cube, wl, cfg):
 
 def select_missing_class_fallbacks(
     matcher, scene, candidate_names, library_names, sam, mbdsa,
-    class_assignments, selected_classes, reserved_candidates,
+    class_assignments, selected_classes, reserved_candidates, mode="FULL",
 ):
-    """General FULL-spectrum fallback for every unrepresented target class.
+    """General mode-specific fallback for every unrepresented target class.
 
     Ordinary class-guided matching determines the primary endmembers. Only
     classes absent from those outputs participate in the fallback. For each
@@ -1260,7 +1268,7 @@ def select_missing_class_fallbacks(
 
     report = {
         'enabled': bool(matcher.FALLBACK_ENABLED),
-        'mode': 'FULL',
+        'mode': mode,
         'selection_policy': 'MAXIMIZE_RECOVERED_CLASSES_THEN_MINIMIZE_TOTAL_SAM',
         'missing_classes_before_fallback': missing,
         'sam_thresholds_deg': {cls: thresholds[cls] for cls in missing},
@@ -1379,7 +1387,7 @@ def select_missing_class_fallbacks(
                 bool(old['accepted_by_thresholds'])
                 if old is not None and pd.notna(old['accepted_by_thresholds']) else None
             ),
-            'selection_method': 'FULL_CLASS_CONDITIONAL_FALLBACK',
+            'selection_method': f'{mode}_CLASS_CONDITIONAL_FALLBACK',
             'quality_flag': 'PROVISIONAL_REQUIRES_INDEPENDENT_VALIDATION',
         }
         assignments[cls] = {'scene_index': ci, 'detail': detail}
@@ -1388,62 +1396,170 @@ def select_missing_class_fallbacks(
     return assignments, report
 
 
-def match_candidates(m, X, wl, names, library, library_names, mode, output, export):
-    """Class-guided selection using the FULL common finite spectral domain."""
-    if mode != 'FULL':
-        raise ValueError('Endmember selection only supports FULL, not MASK3.')
-    valid_lib=np.any(np.isfinite(library),axis=1)
-    library=library[valid_lib]
-    library_names=[n for n,ok in zip(library_names,valid_lib) if ok]
-    if not len(library):raise ValueError(f'{mode}: no GUSL spectra with coverage.')
-    sam,mbdsa,metric_mask=m.compute_similarity_matrices(X,library)
-    if metric_mask.sum() < 10:
-        raise ValueError(f'FULL: insufficient common GUSL coverage: {metric_mask.sum()}/{len(wl)} bands.')
-    top=m.build_top_matches_dataframe(names,library_names,sam,mbdsa,m.CLASS_ASSIGNMENT_METRIC,m.TOP_K)
-    summary=m.add_acceptance_flags(m.summarize_candidates_by_target_class(top,m.TARGET_CLASS_PREFIXES))
-    avg_summary,used,averages=m.collect_candidates_for_class_average(summary,names,X,m.FINAL_TARGET_CLASSES,m.TOP_X_MATERIALS_FOR_AVERAGE)
-    x3,_=m.select_asphalt_concrete_x3(mode,summary,names,X,X,wl,m.ASPHALT_CONCRETE_X3_COUNT)
-    endmembers={};name_to_i={n:i for i,n in enumerate(names)}
+def match_candidates(m, X, wl, names, library, library_names, mode, output, export,
+                     comparison_mask=None):
+    """Match on FULL or MASK3, but ALWAYS return full-length usable signatures.
+
+    X and library are on the same usable image wavelength grid. The supplied
+    comparison_mask affects SAM/MBDSA, class assignment, diversity ranking and
+    fallback ONLY. Final endmembers (including class averages) use X in FULL.
+    """
+    if mode not in ('FULL', 'MASK3'):
+        raise ValueError(f'Unsupported endmember selection mode: {mode}')
+    X = np.asarray(X)
+    library = np.asarray(library)
+    wl = np.asarray(wl)
+    if X.ndim != 2 or library.ndim != 2 or X.shape[1] != library.shape[1] or X.shape[1] != len(wl):
+        raise ValueError('Candidate spectra, library, and wavelengths must share the usable grid.')
+    if comparison_mask is None:
+        if mode != 'FULL':
+            raise ValueError('MASK3 requires an explicit boolean comparison mask.')
+        comparison_mask = np.ones(len(wl), dtype=bool)
+    comparison_mask = np.asarray(comparison_mask)
+    if comparison_mask.dtype != np.bool_ or comparison_mask.shape != (len(wl),):
+        raise ValueError('comparison_mask must be a boolean vector on the usable wavelength grid.')
+    if mode == 'FULL' and not comparison_mask.all():
+        raise ValueError('FULL selection cannot use a reduced comparison mask.')
+    if mode == 'MASK3' and int(comparison_mask.sum()) != int(m.MASK3_N_BANDS):
+        raise ValueError(f'MASK3 requires {m.MASK3_N_BANDS} selected bands; got {comparison_mask.sum()}.')
+    valid_lib = np.any(np.isfinite(library), axis=1)
+    library = library[valid_lib]
+    library_names = [n for n, ok in zip(library_names, valid_lib) if ok]
+    if not len(library):
+        raise ValueError(f'{mode}: no GUSL spectra with coverage.')
+    scene_cmp = X[:, comparison_mask]
+    library_cmp = library[:, comparison_mask]
+    sam, mbdsa, comparison_common = m.compute_similarity_matrices(scene_cmp, library_cmp)
+    n_common = int(comparison_common.sum())
+    if mode == 'MASK3' and n_common != int(comparison_mask.sum()):
+        raise ValueError(f'MASK3: {n_common} of {comparison_mask.sum()} bands have common GUSL coverage; '
+                         'choose valid wavelengths or revise the library. No silent band removal.')
+    if mode == 'FULL' and n_common < 10:
+        raise ValueError(f'FULL: insufficient common GUSL coverage: {n_common}/{len(wl)} bands.')
+    metric_mask = np.zeros(len(wl), dtype=bool)
+    metric_mask[np.flatnonzero(comparison_mask)] = comparison_common
+    top = m.build_top_matches_dataframe(names, library_names, sam, mbdsa, m.CLASS_ASSIGNMENT_METRIC, m.TOP_K)
+    summary = m.add_acceptance_flags(m.summarize_candidates_by_target_class(top, m.TARGET_CLASS_PREFIXES))
+    avg_summary, used, averages = m.collect_candidates_for_class_average(
+        summary, names, X, m.FINAL_TARGET_CLASSES, m.TOP_X_MATERIALS_FOR_AVERAGE)
+    x3, _ = m.select_asphalt_concrete_x3(
+        mode, summary, names, scene_cmp, X, wl, m.ASPHALT_CONCRETE_X3_COUNT)
+    endmembers = {}
+    name_to_i = {name: i for i, name in enumerate(names)}
     for cls in m.FINAL_TARGET_CLASSES:
-        if cls in ('asphalt_road','concrete'):
+        if cls in ('asphalt_road', 'concrete'):
             if not x3.empty:
-                selected=x3[x3.class_name==cls].sort_values(['x3_rank','candidate'])
-                for j,(_,row) in enumerate(selected.iterrows(),1):endmembers[f'{cls}_{j}']=X[name_to_i[row.candidate]].copy()
+                selected = x3[x3.class_name == cls].sort_values(['x3_rank', 'candidate'])
+                for rank, (_, row) in enumerate(selected.iterrows(), 1):
+                    endmembers[f'{cls}_{rank}'] = X[name_to_i[row.candidate]].copy()
         elif cls in averages and np.all(np.isfinite(averages[cls])):
-            endmembers[cls]=averages[cls]
-    # General scene-independent fallback for every missing configured target.
-    # Selected candidates and class averages are never modified/reassigned.
+            endmembers[cls] = averages[cls]
     present = set(infer_groups(list(endmembers), m.FINAL_TARGET_CLASSES))
     reserved = set(x3['candidate'].astype(str)) if not x3.empty else set()
     if not used.empty:
         reserved.update(used['candidate'].astype(str))
-    fallback_assignments, m.fallback_report = select_missing_class_fallbacks(
+    fallback, m.fallback_report = select_missing_class_fallbacks(
         m, X, names, library_names, sam, mbdsa, summary,
-        selected_classes=present, reserved_candidates=reserved,
-    )
+        selected_classes=present, reserved_candidates=reserved, mode=mode)
     for cls in m.FINAL_TARGET_CLASSES:
-        if cls not in fallback_assignments:
+        if cls not in fallback:
             continue
-        match = fallback_assignments[cls]
-        # Retain the convention for asphalt/concrete replicated endmembers.
-        endmember_name = f'{cls}_1' if cls in ('asphalt_road', 'concrete') else cls
-        endmembers[endmember_name] = X[match['scene_index']].copy()
-        logging.warning(
-            'FULL provisional fallback for %s: candidate=%s, SAM=%.3f degrees; '
-            'original winner=%s; ground validation still required.',
-            cls, match['detail']['candidate'], match['detail']['sam_deg'],
-            match['detail']['original_best_target_class'],
-        )
+        match = fallback[cls]
+        name = f'{cls}_1' if cls in ('asphalt_road', 'concrete') else cls
+        endmembers[name] = X[match['scene_index']].copy()
+        logging.warning('%s provisional fallback for %s: candidate=%s, SAM=%.3f degrees; '
+                        'original winner=%s; independent validation required.',
+                        mode, cls, match['detail']['candidate'], match['detail']['sam_deg'],
+                        match['detail']['original_best_target_class'])
     for item in m.fallback_report['unresolved']:
-        logging.warning('FULL class %s remains missing: %s', item['class_name'], item['reason'])
+        logging.warning('%s class %s remains missing: %s', mode, item['class_name'], item['reason'])
+    if len(endmembers) < 2:
+        raise ValueError(f'{mode}: fewer than two endmembers; inspect candidate classes and GUSL.')
     output.mkdir(parents=True, exist_ok=True)
-    write_json(output / 'FULL_fallback_report.json', m.fallback_report)
-    if len(endmembers)<2:raise ValueError(f'{mode}: fewer than two endmembers selected; inspect candidate classes and GUSL.')
-    output.mkdir(parents=True,exist_ok=True)
-    for filename,frame in [('class_assignments',summary),('average_summary',avg_summary),('candidates_used',used),('bundle_selection',x3)]:frame.to_csv(output/f'{mode}_{filename}.csv',index=False)
+    write_json(output / f'{mode}_fallback_report.json', m.fallback_report)
+    for filename, frame in [('class_assignments', summary), ('average_summary', avg_summary),
+                            ('candidates_used', used), ('bundle_selection', x3)]:
+        frame.to_csv(output / f'{mode}_{filename}.csv', index=False)
     if export:
-        np.savez_compressed(output/f'{mode}_metrics.npz',sam=sam,mbdsa=mbdsa,metric_mask=metric_mask,library_names=np.array(library_names),candidate_names=np.array(names))
-    return endmembers,metric_mask
+        np.savez_compressed(output / f'{mode}_metrics.npz', sam=sam, mbdsa=mbdsa,
+                            metric_mask=metric_mask, library_names=np.array(library_names),
+                            candidate_names=np.array(names))
+    return endmembers, metric_mask
+
+
+def resolve_mask3_indices(wavelengths, usable_common_mask, selected_indices, cfg):
+    """Return 15 unique usable-grid indices for MASK3, automatic or fixed.
+
+    'auto': adopt bands optimized from FULL endmembers. 'fixed': map user-given
+    physical wavelengths to nearest measured band within MAX_DELTA; no
+    interpolation, no duplicate band mapping, no invalid/GUSL-undefined bands.
+    """
+    wl = np.asarray(wavelengths, dtype=float)
+    eligible = np.asarray(usable_common_mask, dtype=bool)
+    if eligible.shape != wl.shape:
+        raise ValueError('MASK3 eligibility mask has an incompatible wavelength grid.')
+    matching = cfg['matching']
+    count = int(matching['MASK3_N_BANDS'])
+    if count < 2:
+        raise ValueError('MASK3_N_BANDS must be >= 2.')
+    source = str(matching['MASK3_SOURCE']).lower()
+    if source not in ('auto', 'fixed'):
+        raise ValueError('MASK3_SOURCE must be auto or fixed.')
+    requested = matching['MASK3_WAVELENGTHS_UM']
+    if source == 'auto':
+        if requested:
+            raise ValueError('MASK3_WAVELENGTHS_UM must be empty when MASK3_SOURCE is auto.')
+        indices = np.asarray(selected_indices, dtype=int)
+        if indices.shape != (count,):
+            raise ValueError(f'Expected {count} auto-optimized MASK3 indices.')
+        target = wl[indices].copy()
+    else:
+        target = np.asarray(requested, dtype=float)
+        if target.shape != (count,) or not np.isfinite(target).all():
+            raise ValueError(f'Fixed MASK3 requires {count} finite wavelengths in micrometers.')
+        max_delta = float(matching['MASK3_MAX_DELTA_UM'])
+        if not np.isfinite(max_delta) or not 0 < max_delta < 0.1:
+            raise ValueError('MASK3_MAX_DELTA_UM must be between 0 and 0.1 um.')
+        candidates = np.flatnonzero(eligible)
+        if not len(candidates):
+            raise ValueError('No bands with common GUSL coverage available for fixed MASK3.')
+        indices = []
+        for value in target:
+            index = candidates[np.argmin(np.abs(wl[candidates] - value))]
+            delta = abs(wl[index] - value)
+            if delta > max_delta:
+                raise ValueError(f'No usable MASK3 band near {value:.6f} um: '
+                                 f'nearest {wl[index]:.6f} um (difference {delta:.6f} um).')
+            indices.append(int(index))
+        indices = np.array(indices, dtype=int)
+    if len(set(indices.tolist())) != count or np.any(indices < 0) or np.any(indices >= len(wl)):
+        raise ValueError('MASK3 selected indices must be distinct and on the usable wavelength grid.')
+    if not np.all(eligible[indices]):
+        raise ValueError('MASK3 contains bands without common candidate/GUSL coverage.')
+    info = {
+        'source': source, 'requested_wavelengths_um': target.tolist(),
+        'actual_wavelengths_um': wl[indices].tolist(),
+        'matching_grid_indices_base0': indices.tolist(),
+        'absolute_deviation_um': np.abs(wl[indices] - target).tolist(),
+        'number_of_matching_bands': count,
+        'output_endmember_wavelength_count': int(len(wl)),
+        'note': 'MASK3 is used for matching/assignment/ranking only; final spectra retain all usable image bands.',
+    }
+    return indices, info
+
+
+def make_endmembers_dataframe(endmembers, wavelengths):
+    """Validate and serialize untrimmed endmember spectra for either mode."""
+    if len(endmembers) < 2:
+        raise ValueError('At least two endmembers are required for FCLS.')
+    wl = np.asarray(wavelengths, dtype=float)
+    frame = pd.DataFrame({'wavelength_um': wl, **endmembers})
+    data = frame.to_numpy(dtype=float)
+    if data.shape != (len(wl), len(endmembers) + 1) or not np.isfinite(data).all():
+        raise ValueError('Endmember spectra must be finite on all usable wavelengths.')
+    if np.any(np.diff(wl) <= 0):
+        raise ValueError('Endmember wavelengths must be strictly increasing.')
+    return frame
 
 
 def evaluate_combinations_fast(selector, wl, groups, combos, exact):
@@ -1572,17 +1688,18 @@ def write_stac(out, input_image, acquisition_datetime, source_item=None):
         raise ValueError('Input STAC must supply an acquisition time or interval.')
 
     item = pystac.Item(
-        'class-guided-full', geometry, [left, bottom, right, top],
+        'class-guided-full-mask3', geometry, [left, bottom, right, top],
         acquisition_time, temporal
     )
     item.properties['heatwise:processor_version'] = VERSION
     item.properties['heatwise:processed_at'] = datetime.now(timezone.utc).isoformat()
-    item.properties['heatwise:endmember_selection'] = 'FULL'
+    item.properties['heatwise:endmember_selection'] = ['FULL', 'MASK3']
     item.properties['heatwise:band_selection_independent'] = True
     if source_item is not None:
         item.properties['heatwise:source_item_id'] = source_item.id
 
-    main_products = {'selected_endmembers.xlsx', 'selected_bands.json'}
+    main_products = {'selected_endmembers.xlsx', 'selected_endmembers_FULL.xlsx',
+                     'selected_endmembers_MASK3.xlsx', 'selected_bands.json'}
     for path in sorted(out.rglob('*')):
         if not path.is_file() or path.name.endswith('.log'):
             continue
@@ -1616,7 +1733,7 @@ def write_stac(out, input_image, acquisition_datetime, source_item=None):
 
     catalog = pystac.Catalog(
         'heatwise-class-guided',
-        'Scene-specific FULL endmembers and independent selected bands.'
+        'Scene-specific FULL and MASK3 selected endmembers, all full-length, and 15 selected bands.'
     )
     catalog.add_item(item)
     catalog.set_self_href(str((out / 'catalog.json').resolve()))
@@ -1647,24 +1764,25 @@ def sha256(path):
 
 
 def run(image, gusl, out, cfg, wavelength_file=None, source_item=None):
-    """Select FULL endmembers and, independently, 15 discriminative bands.
+    """Produce FULL and MASK3 class selections, both on all usable wavelengths.
 
-    Scientific outputs:
-      - selected_endmembers.xlsx: all usable wavelengths for the final endmembers.
-      - selected_bands.json: independent selected indices/wavelengths.
+    Processing order: extract PPI once -> FULL GUSL matching -> optimize 15
+    bands from FULL signatures -> MASK3 GUSL matching on those 15 bands (or a
+    user-provided physical wavelength mask). All exported signatures always
+    keep the FULL usable scene grid. No FCLS executed or reduced raster made.
 
-    No MASK3 re-matching, no reduced raster, and no FCLS execution.
+    Files:
+      selected_endmembers_FULL.xlsx: selection using all common GUSL bands;
+      selected_endmembers_MASK3.xlsx: selection using ONLY 15 MASK3 bands;
+      selected_endmembers.xlsx: compatibility alias identical to FULL;
+      selected_bands.json: independent optimization from the FULL signatures.
     """
     if source_item is None and not cfg['acquisition_datetime']:
-        raise ValueError(
-            'Direct image input requires acquisition_datetime in config for STAC output.'
-        )
+        raise ValueError('Direct image input requires acquisition_datetime in config for STAC output.')
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     if any(out.iterdir()):
         raise ValueError('Output directory must be empty (prevents mixed products).')
-
-    # Administrative/diagnostic metadata are not additional scientific outputs.
     write_json(out / 'effective_config.json', cfg)
     cube, wl, original_order, _profile = read_image(image, wavelength_file)
     candidates, usable, strata = extract_candidates(cube, wl, cfg)
@@ -1675,126 +1793,111 @@ def run(image, gusl, out, cfg, wavelength_file=None, source_item=None):
 
     diagnostics = out / 'diagnostics'
     diagnostics.mkdir()
-    pd.DataFrame([
-        {k: v for k, v in c.items() if k != 'spectrum'} | {'candidate': name}
-        for c, name in zip(candidates, names)
-    ]).to_csv(diagnostics / 'candidates.csv', index=False)
+    pd.DataFrame([{k: v for k, v in c.items() if k != 'spectrum'} | {'candidate': name}
+                  for c, name in zip(candidates, names)]).to_csv(
+                      diagnostics / 'candidates.csv', index=False)
     if cfg['export_intermediates']:
         np.savez_compressed(
-            diagnostics / 'candidates.npz',
-            spectra=scene,
-            wavelengths_um=wl_use,
-            original_indices_base0=orig,
-            **strata,
-        )
+            diagnostics / 'candidates.npz', spectra=scene,
+            wavelengths_um=wl_use, original_indices_base0=orig, **strata)
 
     matcher = Matching(cfg['matching'])
     libraries = matcher.read_multiple_gusl_sheets(gusl, matcher.GUSL_SHEETS)
-    lib = []
-    library_names = []
+    lib, library_names = [], []
     for entry in libraries:
         if np.max(entry['wl']) > 50:
-            raise ValueError(
-                'GUSL wavelengths must be in micrometers; convert explicitly.'
-            )
-        lib.append(
-            matcher.pchip_library_to_target_grid(entry['wl'], entry['X'], wl_use)
-        )
+            raise ValueError('GUSL wavelengths must be in micrometers; convert explicitly.')
+        lib.append(matcher.pchip_library_to_target_grid(entry['wl'], entry['X'], wl_use))
         library_names.extend(entry['names'])
     lib = np.vstack(lib)
 
-    # Exactly one class-guided selection: FULL. It uses the intersection of
-    # valid bands for scene candidates and the library (the existing kernel).
-    final, common = match_candidates(
-        matcher, scene, wl_use, names, lib, library_names,
-        'FULL', diagnostics, cfg['export_intermediates']
-    )
-    groups = infer_groups(
-        list(final), matcher.FINAL_TARGET_CLASSES, cfg['class_mapping']
-    )
-    missing = set(cfg['required_classes']) - set(groups)
-    if missing:
-        raise ValueError(
-            f'Required material classes missing after FULL: {sorted(missing)}'
-        )
+    # Pass 1: FULL class-guided matching on the common finite GUSL domain.
+    final_full, common = match_candidates(
+        matcher, scene, wl_use, names, lib, library_names, 'FULL',
+        diagnostics, cfg['export_intermediates'])
+    full_fallback_report = copy.deepcopy(matcher.fallback_report)
+    full_frame = make_endmembers_dataframe(final_full, wl_use)
+    full_frame.to_excel(out / 'selected_endmembers_FULL.xlsx', index=False, sheet_name='endmembers')
+    # Preserve existing ESA / EOAP interface (same content as explicit FULL).
+    full_frame.to_excel(out / 'selected_endmembers.xlsx', index=False, sheet_name='endmembers')
 
-    # First scientific product. The signatures come from the original FULL
-    # candidates and retain all USABLE bands, not just the band optimizer's 15.
-    endmembers = pd.DataFrame({'wavelength_um': wl_use, **final})
-    numeric = endmembers.to_numpy(dtype=float)
-    if endmembers.shape[1] < 3:
-        raise ValueError('At least two endmembers are required by FCLS.')
-    if numeric.shape[0] != len(wl_use) or not np.isfinite(numeric).all():
-        raise ValueError('Endmember spectra must be finite on every usable band.')
-    if np.any(np.diff(endmembers['wavelength_um'].to_numpy(float)) <= 0):
-        raise ValueError('Endmember wavelengths must be strictly increasing.')
-    endmembers.to_excel(
-        out / 'selected_endmembers.xlsx', index=False, sheet_name='endmembers'
-    )
-
-    # Second scientific product: optimize bands from FULL endmembers only.
-    # Its result does not modify or reselect the endmembers.
-    selected, details = select_bands(final, wl_use, common, cfg, out)
-    selected_wl = wl_use[selected]
+    # Exactly one optimization of 15 bands, based only on FULL endmembers.
+    selected, details = select_bands(final_full, wl_use, common, cfg, out)
     if len(selected) != cfg['bands']['N_FINAL_BANDS']:
         raise ValueError('The requested number of optimized bands was not achieved.')
     details.update(
-        wavelengths_um=selected_wl.tolist(),
+        wavelengths_um=wl_use[selected].tolist(),
         original_band_indices_base0=orig[selected].tolist(),
         original_band_indices_base1=(orig[selected] + 1).tolist(),
         selected_usable_grid_indices_base0=selected.tolist(),
         full_metric_original_indices_base0=orig[common].tolist(),
-        seed=cfg['seed'],
-        configuration=cfg['bands'],
+        seed=cfg['seed'], configuration=cfg['bands'],
         band_selection_independent=True,
-        mask3_reselection=False,
+        mask3_reselection=True,
+        mask3_selection_does_not_truncate_endmembers=True,
     )
     write_json(out / 'selected_bands.json', details)
 
-    write_json(
-        diagnostics / 'endmember_classes.json',
-        {
-            'classes': groups,
-            'note': (
-                'FCLS endmembers include class replicates. Summed material '
-                'abundances may require aggregating corresponding output bands.'
-            ),
-        },
-    )
+    # Pass 2: MASK3 matches only; final averages/replicates still use ALL wl_use.
+    mask3_idx, mask3_info = resolve_mask3_indices(wl_use, common, selected, cfg)
+    mask3_info['original_band_indices_base0'] = orig[mask3_idx].tolist()
+    mask3_info['original_band_indices_base1'] = (orig[mask3_idx] + 1).tolist()
+    write_json(out / 'mask3_matching_bands.json', mask3_info)
+    mask3 = np.zeros(len(wl_use), dtype=bool)
+    mask3[mask3_idx] = True
+    final_mask3, metric_mask3 = match_candidates(
+        matcher, scene, wl_use, names, lib, library_names, 'MASK3',
+        diagnostics, cfg['export_intermediates'], comparison_mask=mask3)
+    mask3_fallback_report = copy.deepcopy(matcher.fallback_report)
+    mask3_frame = make_endmembers_dataframe(final_mask3, wl_use)
+    mask3_frame.to_excel(out / 'selected_endmembers_MASK3.xlsx', index=False, sheet_name='endmembers')
+    if len(mask3_frame) != len(full_frame) or not np.array_equal(
+        mask3_frame['wavelength_um'].to_numpy(), full_frame['wavelength_um'].to_numpy()):
+        raise AssertionError('FULL and MASK3 outputs must retain identical complete wavelength grids.')
+
+    full_groups = infer_groups(list(final_full), matcher.FINAL_TARGET_CLASSES, cfg['class_mapping'])
+    mask3_groups = infer_groups(list(final_mask3), matcher.FINAL_TARGET_CLASSES, cfg['class_mapping'])
+    for mode, groups in [('FULL', full_groups), ('MASK3', mask3_groups)]:
+        missing = set(cfg['required_classes']) - set(groups)
+        if missing:
+            raise ValueError(f'Required classes missing after {mode} matching: {sorted(missing)}')
+    write_json(diagnostics / 'endmember_classes.json', {
+        'classes': full_groups,  # Backward compatibility.
+        'classes_by_mode': {'FULL': full_groups, 'MASK3': mask3_groups},
+        'note': 'FCLS replicates may need class-level abundance aggregation.'})
+
     summary = {
-        'version': VERSION,
-        'status': 'success',
+        'version': VERSION, 'status': 'success',
         'input_sha256': {'image': sha256(image), 'gusl': sha256(gusl)},
-        'versions': {
-            p: importlib.metadata.version(p)
-            for p in [
-                'numpy', 'scipy', 'pandas', 'rasterio',
-                'scikit-learn', 'openpyxl', 'pystac'
-            ]
-        },
-        'python': sys.version,
-        'gdal': rasterio.__gdal_version__,
-        'input_band_count': int(len(wl)),
-        'usable_image_bands': int(usable.sum()),
+        'versions': {p: importlib.metadata.version(p) for p in
+                     ['numpy', 'scipy', 'pandas', 'rasterio', 'scikit-learn', 'openpyxl', 'pystac']},
+        'python': sys.version, 'gdal': rasterio.__gdal_version__,
+        'input_band_count': int(len(wl)), 'usable_image_bands': int(usable.sum()),
         'full_metric_bands': int(common.sum()),
+        'mask3_metric_bands': int(metric_mask3.sum()),
         'endmember_spectral_bands': int(len(wl_use)),
         'candidate_count': len(candidates),
-        'final_endmembers': list(final),
-        'missing_target_classes': sorted(
-            set(matcher.FINAL_TARGET_CLASSES) - set(groups)
-        ),
+        'final_endmembers': list(final_full),  # Backward compatibility.
+        'missing_target_classes': sorted(set(matcher.FINAL_TARGET_CLASSES) - set(full_groups)),
         'selected_bands': int(len(selected)),
-        'endmember_selection': 'FULL',
+        'endmember_selection': 'FULL+MASK3',
+        'endmember_selection_modes': ['FULL', 'MASK3'],
+        'endmembers_by_mode': {'FULL': list(final_full), 'MASK3': list(final_mask3)},
+        'missing_target_classes_by_mode': {
+            'FULL': sorted(set(matcher.FINAL_TARGET_CLASSES) - set(full_groups)),
+            'MASK3': sorted(set(matcher.FINAL_TARGET_CLASSES) - set(mask3_groups))},
         'fallback_enabled': bool(matcher.FALLBACK_ENABLED),
-        'fallback_selected_classes': [x['class_name'] for x in matcher.fallback_report['selected']],
-        'fallback_unresolved_classes': [x['class_name'] for x in matcher.fallback_report['unresolved']],
-        'fallback_selections': matcher.fallback_report['selected'],
-        'mask3_reselection': False,
+        'fallback_selected_classes': [x['class_name'] for x in full_fallback_report['selected']],
+        'fallback_unresolved_classes': [x['class_name'] for x in full_fallback_report['unresolved']],
+        'fallback_selections': full_fallback_report['selected'],
+        'fallback_by_mode': {'FULL': full_fallback_report, 'MASK3': mask3_fallback_report},
+        'mask3_matching': mask3_info,
+        'mask3_reselection': True,
+        'mask3_selection_does_not_truncate_endmembers': True,
         'band_selection_independent': True,
         'endmember_spectra_validated': True,
         'band_selection_method': details['method'],
-        'unmixing_executed': False,
-        'scientific_accuracy_validated': False,
+        'unmixing_executed': False, 'scientific_accuracy_validated': False,
     }
     write_json(out / 'run_summary.json', summary)
     write_stac(out, image, cfg['acquisition_datetime'], source_item)

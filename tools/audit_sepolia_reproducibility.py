@@ -60,7 +60,7 @@ def read_case(output):
     fallback = json.loads((diag / "FULL_fallback_report.json").read_text())
     return {
         "spectra": X, "wavelengths": wl, "original_indices": orig,
-        "locations": locations, "endmembers": em,
+        "locations": locations, "endmembers": em, "mask3_endmembers": pd.read_excel(output / "selected_endmembers_MASK3.xlsx"),
         "summary": summary, "bands": bands, "fallback": fallback,
     }
 
@@ -91,6 +91,8 @@ def compare_cases(a, b):
         and np.array_equal(a["endmembers"]["wavelength_um"], b["endmembers"]["wavelength_um"])
         and all(x == 0.0 for x in em_diffs.values())
     )
+    ma, mb = a["mask3_endmembers"], b["mask3_endmembers"]
+    mask3_equal = ma.equals(mb)
     selected_a, selected_b = a["bands"].get("wavelengths_um", []), b["bands"].get("wavelengths_um", [])
     overlap = len(set(selected_a) & set(selected_b))
     return {
@@ -108,6 +110,7 @@ def compare_cases(a, b):
         "endmember_names_a": names_a,
         "endmember_names_b": names_b,
         "endmembers_equal_exact_by_name": bool(em_equal),
+        "mask3_endmembers_equal_exact": bool(mask3_equal),
         "endmember_max_abs_reflectance_difference_by_shared_name": em_diffs,
         "fallback_classes_a": a["summary"].get("fallback_selected_classes", []),
         "fallback_classes_b": b["summary"].get("fallback_selected_classes", []),
@@ -149,9 +152,9 @@ def run_case(name, nproj, ncomb, *, args, root, env):
         raise RuntimeError(f"Case {name} failed (see {case / 'processor.log'})")
     info = read_case(output)
     s = info["summary"]
-    if s.get("version") != "0.3.1":
-        raise AssertionError(f"Expected v0.3.1, got {s.get('version')}")
-    if s.get("mask3_reselection") is not False or s.get("endmember_selection") != "FULL":
+    if s.get("version") != "0.3.2":
+        raise AssertionError(f"Expected v0.3.2, got {s.get('version')}")
+    if s.get("mask3_reselection") is not True or s.get("endmember_selection") != "FULL+MASK3":
         raise AssertionError("The processor did not use FULL-only endmembers")
     if s.get("selected_bands") != 15:
         raise AssertionError("Expected exactly 15 independent selected bands")
@@ -210,13 +213,13 @@ def main():
             m = comparisons[name]
             if not (m["candidates_equal_exact"] and m["candidate_metadata_equal_exact"]
                     and m["candidate_wavelengths_equal"] and m["original_band_indices_equal"]
-                    and m["endmembers_equal_exact_by_name"]):
+                    and m["endmembers_equal_exact_by_name"] and m["mask3_endmembers_equal_exact"]):
                 failure = (failure or []) + [name]
     except Exception as exc:
         failure = (failure or []) + [f"audit_exception: {type(exc).__name__}: {exc}"]
         print(f"[AUDIT] Failure during execution: {exc}", file=sys.stderr)
     finally:
-        report = {"workflow": "HEATWISE v0.3.1 reproducibility and PPI sensitivity",
+        report = {"workflow": "HEATWISE v0.3.2 reproducibility and PPI sensitivity",
                   "environment": environment,
                   "cases": {k: v["run_data"] for k,v in cases.items()},
                   "comparisons": comparisons,

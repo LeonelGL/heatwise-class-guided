@@ -1,10 +1,12 @@
 cwlVersion: v1.2
 class: Workflow
 id: main
-label: HEATWISE FULL local workflow
+label: HEATWISE class-guided FULL + MASK3 local workflow
 doc: >
-  Local no-Docker workflow: produce FULL-selected spectral endmembers and
-  independent band list; no MASK3, reduced raster, or FCLS execution.
+  Local no-Docker workflow. Perform class-guided FULL matching, optimize
+  15 bands and independently reselect endmembers using MASK3 matching.
+  Export full-length FULL/MASK3 libraries, a FULL compatibility alias,
+  selected bands, diagnostics and STAC. No FCLS or reduced raster.
 inputs:
   - id: input_catalog
     type: Directory
@@ -38,6 +40,6 @@ outputs:
     outputSource: prepare/products
 $namespaces:
   s: https://schema.org/
-s:softwareVersion: "0.3.1"
+s:softwareVersion: "0.3.2"
+s:version: "0.3.2"
 s:codeRepository: https://github.com/LeonelGL/heatwise-class-guided
-

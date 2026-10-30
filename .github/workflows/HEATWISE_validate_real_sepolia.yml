@@ -1,4 +1,4 @@
-name: HEATWISE v0.3.1 - Real Sepolia FULL scientific preflight
+name: HEATWISE v0.3.2 - Real Sepolia FULL/MASK3 scientific preflight
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   sepolia-full:
-    name: Real Sepolia FULL-only processing
+    name: Real Sepolia FULL and MASK3 selection
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -67,7 +67,7 @@ jobs:
           print('[HISTORICAL FULL] Rows:', len(reference), 'Endmembers:', list(reference.columns[1:]))
           PY
 
-      - name: Run v0.3.1 on real Sepolia (general fallback, no FCLS/MASK3)
+      - name: Run v0.3.2 on real Sepolia (general fallback, dual FULL/MASK3, no FCLS)
         shell: bash
         run: |
           python class_guided_processor.py \
@@ -77,7 +77,7 @@ jobs:
             --n-random-combinations "$N_COMBINATIONS" \
             --output-dir results/sepolia_full
 
-      - name: Validate FULL-only scientific products and STAC
+      - name: Validate BOTH full-length endmember products and STAC
         run: python tools/validate_outputs.py results/sepolia_full
 
       - name: Audit FULL primary/fallback endmembers and official-FCLS spectral handoff
@@ -96,9 +96,12 @@ jobs:
           current = pd.read_excel(output / 'selected_endmembers.xlsx')
           reference = pd.read_excel('examples/output_sepolia/Endmembers_FULL.xlsx')
 
-          assert summary['version'] == '0.3.1'
-          assert summary['endmember_selection'] == 'FULL'
-          assert summary['mask3_reselection'] is False
+          assert summary['version'] == '0.3.2'
+          assert summary['endmember_selection'] == 'FULL+MASK3'
+          assert len(pd.read_excel(output / 'selected_endmembers_MASK3.xlsx')) == len(current)
+          assert summary['mask3_metric_bands'] == 15
+          assert summary['mask3_selection_does_not_truncate_endmembers'] is True
+          assert summary['mask3_reselection'] is True
           assert summary['unmixing_executed'] is False
           assert summary['input_band_count'] == 250
           assert summary['selected_bands'] == 15
@@ -213,6 +216,8 @@ jobs:
               'image_bands': summary['input_band_count'],
               'usable_endmember_bands': summary['endmember_spectral_bands'],
               'full_comparison_bands': summary['full_metric_bands'],
+              'mask3_comparison_bands': summary['mask3_metric_bands'],
+              'mask3_endmembers': summary['endmembers_by_mode']['MASK3'],
               'endmembers': summary['final_endmembers'],
               'independent_selected_band_count': summary['selected_bands'],
               'historical_primary_max_abs_reflectance_difference': max_difference,
@@ -233,10 +238,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sepolia-v03-real-${{ github.run_id }}
+          name: sepolia-v032-dual-real-${{ github.run_id }}
           path: |
             results/sepolia_full/
             results/sepolia_fcls_preflight.json
           if-no-files-found: warn
           retention-days: 14
-

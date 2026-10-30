@@ -1,10 +1,9 @@
-name: Validate FULL preprocessor and EOAP
+name: Validate FULL + MASK3 class-guided processor and EOAP
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - fix/full-endmembers-no-mask3
   pull_request:
 permissions:
   contents: read
@@ -21,16 +20,27 @@ jobs:
           python-version: '3.11'
       - name: Install pinned dependencies
         run: python -m pip install -r requirements-lock-python311.txt
-      - name: Scientific regression and FULL-only integration tests
+      - name: Scientific regression and FULL/MASK3 dual-mode integration tests
         run: python -m pytest tests -q
       - name: Validate container CWL
         run: python -m cwltool --validate cwl/workflow.cwl
       - name: Validate local CWL
         run: python -m cwltool --validate cwl/local/workflow.cwl
-      - name: Build FULL-only container
-        run: docker build -t heatwise/class-guided:0.3.1 .
+      - name: Build FULL/MASK3 dual-mode container
+        run: docker build -t heatwise/class-guided:0.3.2 .
       - name: Run containerized CWL on synthetic STAC input
         run: python -m cwltool --outdir results/ci cwl/workflow.cwl examples/job_synthetic.yml
-      - name: Validate two scientific outputs and STAC
+      - name: Validate dual-mode endmembers, optimized bands and STAC
         run: python tools/validate_outputs.py results/ci/results
-
+      - name: Verify committed source SHA256 manifest
+        run: python tools/refresh_manifest_v032.py --check
+      - name: Prepare v0.3.2 release CWLs without publishing
+        run: |
+          python tools/prepare_release.py \
+            --version 0.3.2 \
+            --image ghcr.io/leonelgl/heatwise-class-guided:0.3.2 \
+            --repository-url https://github.com/LeonelGL/heatwise-class-guided \
+            --output-dir results/release-smoke
+          python -m cwltool --validate results/release-smoke/cwl/workflow.cwl
+          python -m cwltool --pack results/release-smoke/cwl/workflow.cwl > results/release-smoke/heatwise_class_guided.cwl
+          python -m cwltool --validate results/release-smoke/heatwise_class_guided.cwl

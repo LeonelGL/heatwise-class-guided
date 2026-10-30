@@ -1,4 +1,4 @@
-"""Scientific regression and FULL-only export tests for HEATWISE v0.3.0.
+"""Scientific regression and FULL+MASK3 export tests for HEATWISE v0.3.2.
 
 Original-kernel parity checks use reference/ scripts; the end-to-end test uses
 only synthetic data. No real Sepolia accuracy or ESA acceptance is claimed.
@@ -213,9 +213,9 @@ def test_missing_metadata_and_mask_scale(tmp_path):
     np.testing.assert_allclose(wl, [.5, .8])
 
 
-def test_full_only_api_rejects_mask3(tmp_path):
+def test_mask3_requires_explicit_comparison_mask(tmp_path):
     # A previous re-matching path must never be silently reintroduced.
-    with pytest.raises(ValueError, match='FULL'):
+    with pytest.raises(ValueError, match='MASK3'):
         p.match_candidates(
             p.Matching(), np.ones((2, 20)), np.arange(20),
             ['a', 'b'], np.ones((2, 20)), ['Asphalt_1', 'Concrete_1'],
@@ -237,8 +237,8 @@ def test_no_acceptance_thresholds_default():
     assert m.MATCH_RANK_METRIC == 'mbdsa'
 
 
-def test_end_to_end_full_only_reproducible(tmp_path):
-    """Check the actual two-output contract with bundled SYNTHETIC inputs."""
+def test_end_to_end_dual_selection_reproducible(tmp_path):
+    """Check FULL/MASK3 complete-spectrum exports on SYNTHETIC inputs."""
     from examples.make_synthetic import make
 
     source = make(tmp_path / 'input')
@@ -266,8 +266,10 @@ def test_end_to_end_full_only_reproducible(tmp_path):
     assert bands_a == bands_b
     pd.testing.assert_frame_equal(spectra_a, spectra_b)
     assert summary_a['input_band_count'] == 120
-    assert summary_a['endmember_selection'] == 'FULL'
-    assert summary_a['mask3_reselection'] is False
+    assert summary_a['endmember_selection'] == 'FULL+MASK3'
+    assert summary_a['endmember_selection_modes'] == ['FULL','MASK3']
+    assert summary_a['mask3_reselection'] is True
+    assert summary_a['mask3_metric_bands'] == 15
     assert summary_a['band_selection_independent'] is True
     assert summary_a['unmixing_executed'] is False
     assert summary_a['scientific_accuracy_validated'] is False
@@ -294,7 +296,7 @@ def test_end_to_end_full_only_reproducible(tmp_path):
     )
     assert np.all(np.diff(band_wavelengths) >= .04 - 1e-9)
     assert bands_a['band_selection_independent'] is True
-    assert bands_a['mask3_reselection'] is False
+    assert bands_a['mask3_reselection'] is True
     assert 18 not in bands_a['original_band_indices_base0']
 
     assert not list(out_a.rglob('*.tif'))
@@ -303,7 +305,14 @@ def test_end_to_end_full_only_reproducible(tmp_path):
         'mask3_wavelengths_um.txt', 'unmixing_inputs.json',
     ]:
         assert not (out_a / obsolete).exists()
-    assert not (out_a / 'diagnostics' / 'MASK3_metrics.npz').exists()
+    assert (out_a / 'diagnostics' / 'MASK3_class_assignments.csv').exists()
+    assert (out_a / 'diagnostics' / 'FULL_fallback_report.json').exists()
+    assert (out_a / 'diagnostics' / 'MASK3_fallback_report.json').exists()
+    mask3_spectra = pd.read_excel(out_a / 'selected_endmembers_MASK3.xlsx')
+    full_spectra = pd.read_excel(out_a / 'selected_endmembers_FULL.xlsx')
+    assert len(mask3_spectra) == len(full_spectra) == len(spectra_a)
+    np.testing.assert_array_equal(mask3_spectra['wavelength_um'], full_spectra['wavelength_um'])
+    pd.testing.assert_frame_equal(full_spectra, spectra_a)
     assert (out_a / 'diagnostics' / 'FULL_class_assignments.csv').exists()
     assert (out_a / 'diagnostics' / 'band_selection.xlsx').exists()
 
@@ -313,7 +322,9 @@ def test_end_to_end_full_only_reproducible(tmp_path):
     assert './selected_bands.json' in {v['href'] for v in assets.values()}
     assert './diagnostics/candidates.csv' in {v['href'] for v in assets.values()}
     assert all(not Path(v['href']).is_absolute() for v in assets.values())
-    assert item['properties']['heatwise:endmember_selection'] == 'FULL'
+    assert item['properties']['heatwise:endmember_selection'] == ['FULL','MASK3']
+    for filename in ('selected_endmembers_FULL.xlsx', 'selected_endmembers_MASK3.xlsx', 'mask3_matching_bands.json'):
+        assert './' + filename in {v['href'] for v in assets.values()}
     assert item['properties']['heatwise:band_selection_independent'] is True
 
     with pytest.raises(ValueError, match='empty'):
@@ -321,4 +332,3 @@ def test_end_to_end_full_only_reproducible(tmp_path):
             image, source / 'gusl_synthetic.xlsx', out_a, cfg,
             source_item=source_item,
         )
-

@@ -1,9 +1,26 @@
 # HEATWISE class-guided — scientific and technical change record
 
-## Current scope: version 0.3.1 (FULL-only with general missing-class fallback)
+## Current scope: version 0.3.2 — dual FULL + MASK3 (2026-10-30)
 
-**This section defines the current workflow.** Descriptions of MASK3 and
-reduced-image handoff in earlier commits or historical examples are superseded.
+- FULL and MASK3 independently select scene-derived endmembers from a common
+  candidate pool. MASK3 matches only on the 15 bands selected from FULL.
+- Both modes export all usable spectral wavelengths. The legacy
+  selected_endmembers.xlsx is a byte-equivalent table alias of FULL.
+- The containerized EOAP embeds the processor Python in Docker, with no
+  external processor script as a required CWL input.
+- The tag-triggered GitHub Release workflow produces pinned-version Docker/CWL
+  assets and a single-file packed CWL; it does not run on normal commits.
+- Documentation and the source integrity manifest are updated for this contract.
+- Real GUSL and Sepolia test datasets are excluded from the current delivery
+  tree pending an approved redistribution determination. Synthetic fixtures
+  and source/reference algorithms are preserved; earlier experiments remain
+  referenced through immutable workflow run links and prior Git history.
+- Code licensing requires a project-approved LICENSE; no license is inferred.
+
+## Previous scope: version 0.3.1 (FULL-only with general missing-class fallback)
+
+**Historical context only.** The current v0.3.2 workflow performs both FULL
+and MASK3 matching; see the v0.3.2 section above.
 
 ### General missing-class fallback (introduced in 0.3.1)
 
@@ -142,6 +159,11 @@ selection and minimum spacing.
    do not establish Sepolia overall accuracy or ESA qualification.
 
 ## Version history / provenance
+
+### 0.3.1 — FULL-only endmember preparation
+
+This version introduced general class-guided fallback and exported FULL spectra
+without MASK3 re-matching. It has been superseded by the dual-mode v0.3.2.
 
 ### 0.2.0 — historical preprocessing-only interface
 
