@@ -1,0 +1,44 @@
+{
+  "schema": "heatwise.reference_data.v1",
+  "purpose": "Reproducible Sepolia v2 class-guided FULL/MASK3 reference experiment",
+  "source_commit": "c7618ff31ad0e1732d7fe35cff7799c412654d70",
+  "data_license_note": "Dataset attribution and reuse permissions not independently verified. Repository inclusion is not a data-license grant.",
+  "assets": [
+    {
+      "path": "examples/resources/GUSL_spectra_by_material_headers.xlsx",
+      "git_blob_sha1": "b3fa9cd9f00d9661280bd0ec6852c17515ee961f",
+      "size_bytes": 8330528,
+      "format": "XLSX",
+      "used_sheets": [
+        "BRUSSELS_APEX_GENLIB",
+        "DLR"
+      ],
+      "role": "reference_spectral_library"
+    },
+    {
+      "path": "examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif",
+      "git_blob_sha1": "4b5f833cbffd7073b749345a041c0758d3df1fd2",
+      "size_bytes": 2596071,
+      "format": "GeoTIFF/COG",
+      "bands": 250,
+      "role": "hyperspectral_image",
+      "acquisition_date": "2009-07-18",
+      "acquisition_time_verified": false
+    },
+    {
+      "path": "examples/sepolia/catalog.json",
+      "git_blob_sha1": "44e59f4abb818d77fbff1120da1454efa872a949",
+      "role": "input_stac_catalog"
+    },
+    {
+      "path": "examples/sepolia/item.json",
+      "git_blob_sha1": "fafbdee0ec5371291ea71834eede057a89ef4b82",
+      "role": "input_stac_item"
+    }
+  ],
+  "job": "examples/job_sepolia.yml",
+  "unused_optional_file": {
+    "name": "GUSL_catalog_all.csv",
+    "status": "not used by class_guided_processor.py and not available in the historical repository snapshot"
+  }
+}
