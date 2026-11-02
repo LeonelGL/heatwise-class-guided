@@ -1,123 +1,91 @@
-# HEATWISE: material-level maps after official HySUPP/FCLS
+# Material-level abundance and Top-1 maps
 
-## Responsibility and scientific scope
+`tools/aggregate_fcls_classes.py` postprocesses the **external** HEATWISE
+HySUPP/FCLS abundance raster. It does not run FCLS or change the original
+per-endmember abundance estimates.
 
-Two independent executables share one versioned Docker image:
+## Calculation
 
-1. **Class-guided preprocessing EOAP** (`class_guided_processor.py`,
-   `cwl/workflow.cwl`): consumes CHIME-like STAC imagery and GUSL; produces
-   FULL/MASK3 endmember XLSX, optimized 15-band selection, and class mapping.
-2. **Material postprocessing EOAP** (`tools/aggregate_fcls_classes.py`,
-   `cwl/material_workflow.cwl`): consumes **externally generated** official
-   FCLS abundance output plus the associated endmember workbook and mapping.
-   It never invokes, modifies, or packages the ESA FCLS processor.
-
-There is **no single EOAP that executes all three stages** (preprocessing,
-external FCLS, postprocessing). Users explicitly run official FCLS in between.
-
-The official ESA FCLS produces abundances `a_k(x,y)` for each **spectral
-endmember** and an individual-endmember Top-1. If multiple signatures refer
-to the same material, the class-level products instead use:
+For material `c`, with endmembers `G_c`:
 
 ```text
-A_material(x,y) = sum(a_k(x,y) for endmembers k in that material)
-material_Top1(x,y) = argmax_material A_material(x,y)
+abundance_c(pixel) = sum(abundance_k(pixel) for k in G_c)
+top1(pixel)        = argmax_c abundance_c(pixel)
 ```
 
-For example, asphalt 0.25 + 0.20 + 0.15 outweighs concrete 0.40.
-The original individual-endmember FCLS results are preserved unmodified.
-The class labels may be provisional: a spectral match to GUSL is not proof
-of the true material identity.
+For example, three asphalt fractions of 0.25, 0.20 and 0.15 produce
+an asphalt abundance of 0.60. A single concrete fraction of 0.40 does not
+outweigh their **combined** material abundance.
 
-## Direct CLI example (official FCLS has already been run)
+The grouping comes from `diagnostics/endmember_classes.json` created by
+class-guided. The script validates the endmember names and order against the
+exported XLSX and FCLS metadata; it does not assume a fixed number of
+endmembers or a hard-coded label ordering.
+
+## Inputs
+
+- FCLS `*_abundance_stack_COG.tif`, or the FCLS STAC output directory
+  containing `catalog.json` with an `abundance` asset.
+- The **same** `selected_endmembers_FULL.xlsx` or
+  `selected_endmembers_MASK3.xlsx` supplied to FCLS.
+- `diagnostics/endmember_classes.json` from that class-guided run.
+- FCLS `*_class_names.json` and `*_run_metadata.json`.
+- `FULL` or `MASK3` mode and the actual acquisition date-time with timezone
+  (ISO 8601). Sepolia's date alone is insufficient to infer its exact time.
+
+Example, after executing FCLS separately:
 
 ```bash
 python tools/aggregate_fcls_classes.py \
-  --abundances /data/fcls/Sepolia_FCLS_abundance_stack_COG.tif \
+  --fcls-output-dir /data/fcls-output \
   --selected-endmembers /data/class-guided/selected_endmembers_FULL.xlsx \
   --class-mapping /data/class-guided/diagnostics/endmember_classes.json \
   --mode FULL \
-  --fcls-class-names /data/fcls/Sepolia_FCLS_class_names.json \
-  --fcls-metadata /data/fcls/Sepolia_FCLS_run_metadata.json \
-  --acquisition-datetime 2009-07-18T12:00:00+02:00 \
-  --output-dir /data/materials \
-  --output-prefix Sepolia_FULL
+  --fcls-class-names /data/fcls-output/scene_class_names.json \
+  --fcls-metadata /data/fcls-output/scene_run_metadata.json \
+  --acquisition-datetime YOUR_VERIFIED_ISO8601_DATETIME \
+  --output-dir results/materials \
+  --output-prefix scene
 ```
 
-**The timestamp above is only a syntax example, NOT a verified acquisition
-time for Sepolia.** Enter the actual acquisition time and timezone from
-authoritative imagery metadata; the only established Sepolia date is
-2009-07-18. We do not substitute FCLS processing time for acquisition time.
-The CLI also accepts `--fcls-output-dir /data/fcls` *instead of*
-`--abundances`, discovering the abundance asset via official FCLS STAC
-`catalog.json`.
+If the FCLS run used MASK3, pass the MASK3 workbook and `--mode MASK3`.
+The selected 15 wavelengths are used for class-guided **matching**, not
+automatically as a restriction on the FCLS input bands.
 
-Use `selected_endmembers_MASK3.xlsx` and `--mode MASK3` **only** if the
-upstream FCLS run used that exact workbook. The 15 bands used to *select*
-MASK3 endmembers do not automatically constrain FCLS spectral bands.
+## Outputs
 
-## CWL stage-in / stage-out
+- `<prefix>_class_abundances_COG.tif`: one band per material, sums of the
+  corresponding FCLS endmember fractions.
+- `<prefix>_material_top1_COG.tif`: one band with 1-based material labels;
+  zero indicates nodata or an unassigned pixel.
+- `<prefix>_material_classes.json`: material-label definitions, member
+  endmembers, source file hashes and pixel counts.
+- `catalog.json` and `item.json`: STAC output with WGS84 geometry/bbox
+  and links to both COGs and the JSON metadata.
 
-`cwl/material_workflow.cwl` wraps `cwl/material_postprocess.cwl` with
-independent EOAP stage-in. Required arguments:
+The geotransform, CRS and nodata masks are retained. Optional
+`--min-abundance` applies to **aggregated material fractions**, not
+individual endmembers.
 
-- `fcls_outputs`: **Directory**, the official FCLS STAC output containing
-  `catalog.json`, an Item with an `abundance` asset, and its local GeoTIFF.
-- `selected_endmembers`: **File**, exactly the FULL or MASK3 XLSX used in
-  FCLS; `class_mapping`: **File** `diagnostics/endmember_classes.json`.
-- `mode`: `FULL` or `MASK3`; `fcls_class_names` and `fcls_metadata`:
-  **File** outputs of the same official FCLS run.
-- `acquisition_datetime`: ISO8601 with explicit timezone; optional
-  `output_prefix` and `min_abundance`.
+## CWL test
 
-Example synthetic end-to-end *postprocessor-only* test, without running FCLS:
+The workflow `cwl/material_workflow.cwl` uses the same Docker image as the
+class-guided processor. An executable synthetic example is available:
 
 ```bash
 python examples/make_postprocess_fixture.py results/material-fixture
 docker build -t heatwise/class-guided:0.3.2 .
-python -m cwltool --outdir results/material-test cwl/material_workflow.cwl \
+python -m cwltool --outdir results/material-check \
+  cwl/material_workflow.cwl \
   results/material-fixture/job_material_synthetic.yml
-python tools/validate_material_outputs.py results/material-test/results synthetic
+python tools/validate_material_outputs.py results/material-check/results synthetic
 ```
 
-The source fixture deliberately **simulates** FCLS-shaped abundance data.
-It is not a test of ESA FCLS or real material-classification accuracy.
+The FCLS-shaped fixture is synthetic and does not test the official FCLS
+processor or real-scene material accuracy.
 
-## Material EOAP outputs
-
-- `<prefix>_class_abundances_COG.tif`: one summed abundance band per
-  material, georeferenced with nodata preserved.
-- `<prefix>_material_top1_COG.tif`: 1-based dominant **material** labels;
-  0 means invalid/unassigned.
-- `<prefix>_material_classes.json`: exact group membership, source file
-  SHA256 digests, acquisition time, classification threshold and counts.
-- `catalog.json` and `item.json`: STAC 1.1 output containing a
-  WGS84 geometry/bbox and relative assets to the two COGs and metadata.
-
-Classes and numeric labels follow `classes_by_mode[mode]` in the selection
-mapping. Never hardcode label positions or assume nine endmembers are present:
-the selector may omit a class if its candidates are not plausible.
-
-## Safety and known limitations
-
-- The XLSX columns, official FCLS `class_names.json`, official run metadata,
-  raster band tags (when present), and mapping must agree. Unknown, duplicated,
-  or reordered endmembers fail rather than silently changing class identities.
-- The official FCLS metadata records endmember *names and workbook basename*,
-  but not an endmember-content digest; this tool hashes the **actual** workbook
-  supplied to it. It cannot prove retrospectively that FCLS used identical
-  spectral numeric values. Preserve the original workbook and run provenance.
-- Invalid pixels remain nodata; optionally, `min_abundance` thresholds
-  the **maximum aggregated material** abundance (which is different from the
-  official per-endmember threshold). Default comes from FCLS metadata.
-- All versions of the tool are subject to independent scientific validation;
-  passing synthetic CWL/COG/STAC tests is not a claim of real Sepolia FCLS
-  accuracy or formal ESA certification.
-
-## Versioned delivery
-
-The release preparation builds **two independent version-pinned packed CWLs**,
-`heatwise_class_guided.cwl` and `heatwise_material_top1.cwl`, alongside one
-versioned Docker image containing both entrypoints. It also includes the four
-source CWLs in the release archive. The release workflow refuses to publish
-until a project-approved LICENSE exists; none is selected or inserted here.
+**Provenance limitation:** the official FCLS metadata records the library
+filename and endmember names but not a content hash of the library used.
+This postprocessor records hashes of the files supplied to it, but cannot
+prove that FCLS previously used identical spectral values. Retain the
+original input workbook and FCLS run records.
