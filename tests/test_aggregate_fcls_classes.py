@@ -33,7 +33,7 @@ def fixture(tmp_path):
     classnames.write_text(json.dumps({"classes": [
         {"label": i+1, "name": n} for i, n in enumerate(names)]}))
     meta = tmp_path / "run_metadata.json"
-    meta.write_text(json.dumps({"inputs": {"endmembers": xlsx.name},
+    meta.write_text(json.dumps({"inputs": {"endmembers": xlsx.name, "acquisition_datetime": "2020-07-01T10:00:00Z"},
                                 "endmembers": {"names": names},
                                 "fcls": {"min_abundance_for_classification": 0.0}}))
     tif = tmp_path / "abundance_stack_COG.tif"
@@ -64,7 +64,20 @@ def test_aggregation_selects_material_not_signature(fixture, tmp_path):
         assert dst.count == 5
         assert dst.read(masked=True).mask[:, 0, 2].all()
         np.testing.assert_allclose(dst.read()[:2, 0, 0], [.60, .40], rtol=0, atol=1e-6)
-    assert (out / "test_material_classes.json").exists()
+    summary_file = out / "test_material_classes.json"
+    assert summary_file.exists()
+    data = json.loads(summary_file.read_text())
+    assert len(data["input_sha256"]["endmember_workbook"]) == 64
+    import pystac
+    cat = pystac.read_file(str(out / "catalog.json"))
+    assert len(list(cat.get_all_items())) == 1
+    assert cat.validate_all() >= 1
+    item = next(cat.get_all_items())
+    assert item.geometry["type"] == "Polygon"
+    assert item.bbox is not None
+    assert set(item.assets) == {"material_abundances", "material_top1", "material_classes"}
+    for asset in item.assets.values():
+        assert Path(asset.get_absolute_href()).is_file()
 
 
 def test_rejects_wrong_endmember_order(fixture):
@@ -111,3 +124,17 @@ def test_invalid_data_not_classified():
     out, labels, valid = ag.aggregate_array(a, [[0], [1]])
     assert not valid[0, 0] and labels[0, 0] == 0
     assert np.isnan(out[:, 0, 0]).all()
+
+
+def test_requires_real_acquisition_time(fixture):
+    xlsx, mapping, classes, meta, tif = fixture
+    payload = json.loads(meta.read_text())
+    del payload["inputs"]["acquisition_datetime"]
+    meta.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="acquisition time"):
+        ag.process(tif, xlsx, mapping, "FULL", classes, meta, tif.parent / "no_time", "test")
+
+
+def test_invalid_naive_time_rejected():
+    with pytest.raises(ValueError, match="timezone"):
+        ag._parse_acquisition_datetime("2009-07-18T12:00:00")
