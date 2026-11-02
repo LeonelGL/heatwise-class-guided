@@ -1,5 +1,18 @@
 # HEATWISE class-guided — scientific and technical change record
 
+## Bundled real scientific inputs (2026-11-02)
+
+- Restore the exact original Sepolia CHIME v2 250-band COG, STAC catalog and
+  GUSL reference XLSX from earlier verified Git blobs (no regeneration).
+- Add `examples/job_sepolia.yml` and document direct/contained execution
+  from a repository clone without manually fetching scientific files.
+- Ensure the formal release workflow permits the reference data but still
+  blocks release when the required code LICENSE is absent.
+- Add cheap real-data identity, STAC, 250-band and GUSL sheet checks to CI.
+- Retain explicit provenance and the distinction between code license and
+  dataset redistribution terms (not independently established).
+
+
 ## Unreleased addition to v0.3.2 development branch (2026-11-02)
 
 - Add independent material-aggregation processor for external FCLS abundance
