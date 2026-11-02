@@ -71,8 +71,7 @@ Version 0.3.2 changes the output contract from 2 main products to a dual-mode
 contract and adds STAC assets and metadata. The legacy `selected_endmembers.xlsx`
 remains an exact alias of FULL to protect previously integrated FCLS consumers,
 but `tools/validate_outputs.py`, scientific tests, workflows, Docker/CWL tags,
-and the SHA-256 manifest must be updated together. Changes are made in the
-existing feature/dual-full-mask3 branch until the project approves a release. The official
+and the SHA-256 manifest must be updated together. Versioned changes are made in reviewed development branches until the project approves a release. The official
 FCLS processor is not modified by this patch.
 
 ## Verification

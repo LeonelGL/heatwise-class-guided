@@ -78,3 +78,14 @@ and some class labels have overlapping materials. The 15 chosen bands
 optimize a proxy for class discrimination, not an independent FCLS
 abundance-error objective. See docs/DUAL_SELECTION_V032.md and
 docs/GENERAL_CLASS_FALLBACK.md for method and quality flags.
+
+## Runtime slimming validation
+
+For development, the full pinned CI lock remains available. The Docker image
+now uses a distinct production lock resolved under Python 3.11, excluding
+`pytest`, `cwltool`, `rio-cogeo` and related development utilities.
+The CI pipeline additionally runs the synthetic fixture on the host and
+compares both endmember XLSX tables and band selections to the actual Docker/CWL
+outputs (including names, shape, wavelength order, reflectances and indices).
+Legacy real-data workflows requiring absent test assets were removed; the
+archived 2026-10-28 real-scene results remain separately documented.

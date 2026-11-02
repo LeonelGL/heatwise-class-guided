@@ -3,10 +3,9 @@
 Generates a standalone single-Item STAC input catalog. Do NOT call the output
 catalog writer: in v0.3.0 that writer requires the two scientific products.
 """
-import sys
+import argparse
 from datetime import datetime, timezone
 from pathlib import Path
-import shutil
 
 import numpy as np
 import pandas as pd
@@ -100,10 +99,13 @@ def make(root, band_count=120):
     catalog.make_all_asset_hrefs_relative()
     catalog.save(catalog_type=pystac.CatalogType.SELF_CONTAINED)
 
-    # Matches the legacy test fixture's path expectations.
-    shutil.copy2(root / 'gusl_synthetic.xlsx', root.parent / 'gusl_synthetic.xlsx')
     return root
 
 
 if __name__ == '__main__':
-    make(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent / 'synthetic')
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('output', nargs='?', default=str(Path(__file__).parent / 'synthetic'))
+    parser.add_argument('--bands', type=int, choices=[120, 250], default=120,
+                        help='Generate a 120-band demo or a 250-band test on demand')
+    args = parser.parse_args()
+    make(args.output, band_count=args.bands)

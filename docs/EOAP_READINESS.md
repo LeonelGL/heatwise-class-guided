@@ -5,7 +5,7 @@ This is a technical delivery checklist, **not ESA certification**.
 | Topic | Implemented and tested | Remaining |
 | --- | --- | --- |
 | Scientific processing | FULL → optimized 15 wavelengths → independent MASK3; both export full-length endmember spectra | Class accuracy/parameter optimality are not certified |
-| Python CLI and dependencies | Python 3.11; pinned lockfile; synthetic regression tests | Reconfirm execution on each official tagged release |
+| Python CLI and dependencies | Python 3.11; separate runtime-only and development locks; synthetic regression and host/Docker parity tests | Reconfirm execution on each official tagged release |
 | EOAP stage-in | STAC input Directory, GUSL File, config File, optional wavelengths File | Authorized inputs must be staged externally |
 | EOAP stage-out | Output Directory, relative STAC assets and dual Excel/JSON products | Consumer-specific platform staging review |
 | Docker | Container build and synthetic CWL execution passed | Publish tag-specific image on final organization |

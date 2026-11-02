@@ -7,8 +7,8 @@ LABEL org.opencontainers.image.source="${SOURCE_REPOSITORY}"
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
 RUN apt-get update && apt-get install -y --no-install-recommends libexpat1 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY requirements-lock-python311.txt /app/
-RUN pip install --no-cache-dir -r requirements-lock-python311.txt
+COPY requirements-runtime-lock-python311.txt /app/
+RUN pip install --no-cache-dir -r requirements-runtime-lock-python311.txt && python -m pip check
 RUN python -c "import numpy, scipy, pandas, rasterio, openpyxl, sklearn, pyproj, pystac"
 COPY class_guided_processor.py /app/
 WORKDIR /work

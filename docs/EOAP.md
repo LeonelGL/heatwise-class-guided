@@ -84,3 +84,16 @@ run. A new real-scene experiment requires the authorized data to be restaged.
 The original image must be provided independently, together with either FULL
 or MASK3 endmember XLSX, to the official HySUPP/FCLS processor:
 https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing
+
+## Distribution minimization (development vs runtime)
+
+The production container installs a Python 3.11 **runtime-only** lock,
+`requirements-runtime-lock-python311.txt`, resolved in a clean virtualenv.
+Development/test and CWL runner dependencies remain in the separate
+`requirements-lock-python311.txt` used on GitHub Actions runners.
+Reference algorithms are retained for automated parity tests, not included
+in the Docker context. The repository contains a single synthetic COG and
+STAC catalog; 250-band synthetic fixtures are generated on demand.
+Real-scene and reproducibility workflows that depended on removed licensed
+inputs are not part of automated delivery and their historical successful
+run links remain in the validation report.

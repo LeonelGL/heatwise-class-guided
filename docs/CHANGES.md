@@ -17,6 +17,16 @@
   referenced through immutable workflow run links and prior Git history.
 - Code licensing requires a project-approved LICENSE; no license is inferred.
 
+### Runtime/EOAP cleanup after 0.3.2 scientific validation
+
+- Split Python 3.11 dependencies into runtime-only and development locks.
+- Remove legacy real-data CI workflows that referenced unbundled inputs.
+- Keep reference/ algorithms because scientific parity tests execute them.
+- Keep one 120-band STAC/COG synthetic fixture; generate 250-band cases on demand.
+- Remove redundant demo inputs, duplicate library copies and obsolete utility wrappers.
+- Add numerical and band-selection parity checks across host and Docker execution.
+- No changes to the scientific FULL/MASK3 processor or selection parameters.
+
 ## Previous scope: version 0.3.1 (FULL-only with general missing-class fallback)
 
 **Historical context only.** The current v0.3.2 workflow performs both FULL

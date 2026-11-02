@@ -8,3 +8,5 @@ examples/output*/
 examples/resources/
 examples/sepolia/
 validation/
+examples/synthetic/scene.tif
+examples/synthetic_250/

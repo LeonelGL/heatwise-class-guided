@@ -20,15 +20,6 @@ jobs:
           python-version: '3.11'
       - name: Install pinned dependencies
         run: python -m pip install -r requirements-lock-python311.txt
-      - name: Resolve a clean Python 3.11 runtime-only lock for audit
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m venv /tmp/heatwise-runtime-only
-          /tmp/heatwise-runtime-only/bin/python -m pip install --disable-pip-version-check -r requirements.txt
-          echo '===== BEGIN RUNTIME-ONLY LOCK ====='
-          /tmp/heatwise-runtime-only/bin/python -m pip freeze
-          echo '===== END RUNTIME-ONLY LOCK ====='
       - name: Scientific regression and FULL/MASK3 dual-mode integration tests
         run: python -m pytest tests -q
       - name: Validate container CWL
@@ -41,6 +32,16 @@ jobs:
         run: python -m cwltool --outdir results/ci cwl/workflow.cwl examples/job_synthetic.yml
       - name: Validate dual-mode endmembers, optimized bands and STAC
         run: python tools/validate_outputs.py results/ci/results
+      - name: Compare host and slim-Docker scientific outputs
+        shell: bash
+        run: |
+          python class_guided_processor.py \
+            --input-catalog examples/synthetic \
+            --gusl examples/synthetic/gusl_synthetic.xlsx \
+            --config examples/synthetic_config.json \
+            --output-dir results/host
+          python tools/compare_runtime_outputs.py results/host results/ci/results
+
       - name: Verify committed source SHA256 manifest
         run: python tools/refresh_manifest_v032.py --check
       - name: Prepare v0.3.2 release CWLs without publishing
