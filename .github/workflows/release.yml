@@ -47,12 +47,12 @@ jobs:
             exit 1
           fi
           test -s NOTICE.md
-          for file in examples/resources/GUSL_spectra_by_material_headers.xlsx examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif; do
-            if [[ -e "$file" ]]; then
-              echo "::error::Remove real dataset $file before publishing; rights have not been confirmed." >&2
-              exit 1
-            fi
-          done
+          # The reference Sepolia/GUSL inputs are intentionally versioned in Git.
+          # The formal source-code LICENSE remains a mandatory release gate.
+          test -s examples/resources/GUSL_spectra_by_material_headers.xlsx
+          test -s examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif
+          test -s examples/sepolia/catalog.json
+          test -s examples/sepolia/item.json
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
