@@ -49,3 +49,21 @@ The precise Sepolia acquisition time/timezone is not inferred from its date.
    mimicked Sepolia inputs. These are not included in the current source tree.
 3. Decide the final version number and target repository with the project
    maintainers. No formal release or container publication has occurred.
+
+
+## Optional material EOAP addendum (unreleased)
+
+- The independent FCLS material mapper is provided in
+  `tools/aggregate_fcls_classes.py` and packaged through
+  `cwl/material_workflow.cwl` / `cwl/material_postprocess.cwl`.
+- Stage-in requires an official FCLS STAC **Directory** plus matching
+  class-guided mapping and FCLS metadata Files. No official FCLS executable
+  runs in this package.
+- Stage-out contains material abundance COG, material Top-1 COG,
+  provenance JSON and a STAC 1.1 catalog with WGS84 geometry/bbox.
+- Python regression, Docker/CWL synthetic integration and two-CWL-pair
+  release packaging are covered in CI. A real official FCLS run and material
+  accuracy validation have **not** been performed.
+- The packaging is ready for internal review after the pull request is merged,
+  but formal ESA release remains blocked by license approval and organization
+  hosting. No license or data rights have been chosen.
