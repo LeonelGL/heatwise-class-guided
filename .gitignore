@@ -10,3 +10,22 @@ examples/sepolia/
 validation/
 examples/synthetic/scene.tif
 examples/synthetic_250/
+
+# Sensitive local credentials and environment configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+credentials.json
+secrets.json
+*.log
+.DS_Store
+
+# Project input datasets requiring a separate redistribution decision.
+# Ignore by name as well as by the historical examples/ location.
+GUSL_spectra_by_material_headers.xlsx
+GUSL_catalog_all.csv
+Sepolia_CHIME_Thermopolis_v2_COG.tif
