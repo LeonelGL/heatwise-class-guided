@@ -86,6 +86,9 @@ jobs:
           python -m cwltool --validate release_dist/cwl/preprocess.cwl
           python -m cwltool --pack release_dist/cwl/workflow.cwl > release_dist/heatwise_class_guided.cwl
           python -m cwltool --validate release_dist/heatwise_class_guided.cwl
+          python -m cwltool --validate release_dist/cwl/material_workflow.cwl
+          python -m cwltool --pack release_dist/cwl/material_workflow.cwl > release_dist/heatwise_material_top1.cwl
+          python -m cwltool --validate release_dist/heatwise_material_top1.cwl
 
       - name: Build versioned Docker image
         shell: bash
@@ -102,9 +105,22 @@ jobs:
           set -euo pipefail
           python -m cwltool \
             --outdir results/release-ci \
-            release_dist/heatwise_class_guided.cwl \
+            release_dist/heatwise_class_guided.cwl
+            release_dist/heatwise_material_top1.cwl
+            release_dist/material_workflow.cwl
+            release_dist/material_postprocess.cwl \
             examples/job_synthetic.yml
           python tools/validate_outputs.py results/release-ci/results
+
+      - name: Smoke-test material postprocessor with synthetic FCLS-shaped STAC input
+        shell: bash
+        run: |
+          set -euo pipefail
+          python examples/make_postprocess_fixture.py results/material-fixture
+          python -m cwltool --outdir results/material-release-ci \
+            release_dist/heatwise_material_top1.cwl \
+            results/material-fixture/job_material_synthetic.yml
+          python tools/validate_material_outputs.py results/material-release-ci/results synthetic
 
       - name: Log in to GHCR
         shell: bash
