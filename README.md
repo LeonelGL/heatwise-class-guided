@@ -81,7 +81,7 @@ accuracy remain to be independently verified.
 
 ## Installation
 
-Python 3.11 is recommended. Use the pinned dependency lock:
+Python 3.11 is recommended. For local development, use the full pinned **development/CI** lock:
 
 ```bash
 python3.11 -m venv .venv
@@ -91,6 +91,8 @@ source .venv/bin/activate
 # .venv\Scripts\Activate.ps1
 python -m pip install -r requirements-lock-python311.txt
 ```
+
+For a lightweight **runtime-only** installation, use `requirements-runtime-lock-python311.txt`. Docker installs only that runtime lock; it does not include `pytest`, `cwltool` or `rio-cogeo`. The CWL runner is installed on the **host**, not inside the scientific container.
 
 ## Usage with the real scene
 
@@ -158,7 +160,7 @@ image and the official FCLS interface before claiming real-scene compatibility.
 ```bash
 python examples/make_synthetic.py
 python class_guided_processor.py --input-catalog examples/synthetic \
-  --gusl examples/gusl_synthetic.xlsx \
+  --gusl examples/synthetic/gusl_synthetic.xlsx \
   --config examples/synthetic_config.json \
   --output-dir results/synthetic
 python tools/validate_outputs.py results/synthetic
@@ -179,13 +181,12 @@ python tools/validate_outputs.py results/cwl/results
 runs without Docker. GitHub Actions tests both declarations and runs the
 containerized synthetic workflow. It does not execute official FCLS.
 
-The `examples/output`, `examples/output_250`, and `examples/output_500k`
-folders, if present, are **historical outputs of older interfaces**
+The former generated-output folders are not part of the delivered source tree. They remain recoverable through Git history
 and must **not** be treated as outputs of version 0.3.2.
 
 ## Real Sepolia validation and ESA delivery status
 
-The current branch `feature/dual-full-mask3` passed:
+Historical validation of the v0.3.2 scientific algorithm passed:
 
 - [Python, Docker/CWL and synthetic validation (run 40742619588)](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40742619588).
 - [Real Sepolia CHIME-like v2 and GUSL FULL/MASK3 preflight (run 40743012798)](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40743012798).
@@ -253,3 +254,26 @@ quality flags and unresolved classes. The same information is summarized in
 Science-facing reports must distinguish ordinary matches from provisional
 fallback endmembers and verify them independently before ESA delivery.
 
+
+## Repository layout and synthetic fixtures
+
+The runtime component is `class_guided_processor.py`, `requirements.txt` /
+`requirements-runtime-lock-python311.txt`, and the versioned Docker image.
+Production CWL definitions are in `cwl/workflow.cwl` and `cwl/preprocess.cwl`.
+The `tests/` and `reference/` directories are retained for scientific parity
+checks; `cwl/local/` is an optional no-Docker development variant.
+Two GitHub Actions workflows cover validation and versioned releases.
+
+Only one small **120-band synthetic STAC fixture** is tracked. The uncompressed
+`scene.tif`, duplicate synthetic GUSL XLSX, and pre-generated 250-band
+fixture are excluded. If you need the 250-band synthetic test, generate it on
+demand, for example:
+
+```bash
+python examples/make_synthetic.py results/synthetic_250 --bands 250
+```
+
+This does not affect the separate real Sepolia v2 validation evidence. Real
+GUSL and Sepolia rasters remain external, subject to redistribution permission.
+Host versus Docker FULL/MASK3 spectral parity is checked in CI using the
+synthetic fixture. Never interpret synthetic parity as ground-truth accuracy.

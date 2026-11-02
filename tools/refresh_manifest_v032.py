@@ -36,6 +36,7 @@ def source_file(path: str) -> bool:
         "LICENSE", "README.md", "VALIDATION_REPORT.md",
         "class_guided_processor.py", "config.json", "requirements.txt",
         "requirements-dev.txt", "requirements-lock-python311.txt",
+        "requirements-runtime-lock-python311.txt",
     }
 
 

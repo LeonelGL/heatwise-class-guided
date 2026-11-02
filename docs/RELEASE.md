@@ -89,3 +89,13 @@ scientific classification accuracy or actual FCLS abundance outputs.
 The class-guided preprocessor remains a separate EOAP feeding the established
 HySUPP unmixing EOAP. The final integrated pipeline CWL may need to point to
 specific image versions of both components.
+
+## Production dependencies and CI fixtures
+
+`Dockerfile` installs `requirements-runtime-lock-python311.txt`, which
+excludes the CWL runner, test framework and scientific-audit utilities.
+GitHub Actions uses `requirements-lock-python311.txt` for development.
+The official synthetic test fixture contains a COG, STAC metadata and an
+XLSX library in `examples/synthetic/`; it never contains real GUSL data.
+The legacy real-data CI workflows and duplicate test rasters are intentionally
+excluded from the EOAP delivery tree.
