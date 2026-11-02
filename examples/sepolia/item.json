@@ -1,0 +1,68 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [],
+  "id": "Sepolia-CHIME-Thermopolis-v2",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          23.69822602923648,
+          37.98515943601646
+        ],
+        [
+          23.7290158923408,
+          37.98515943601646
+        ],
+        [
+          23.7290158923408,
+          38.01555423573789
+        ],
+        [
+          23.69822602923648,
+          38.01555423573789
+        ],
+        [
+          23.69822602923648,
+          37.98515943601646
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    23.69822602923648,
+    37.98515943601646,
+    23.7290158923408,
+    38.01555423573789
+  ],
+  "properties": {
+    "start_datetime": "2009-07-18T00:00:00Z",
+    "end_datetime": "2009-07-18T23:59:59.999999Z",
+    "heatwise:acquisition_date_precision": "day",
+    "heatwise:acquisition_date_source": "Date supplied by data owner; time of acquisition unavailable. UTC day bounds are a catalog convention, not observed acquisition times.",
+    "heatwise:sensor_emulation": "CHIME",
+    "datetime": null
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "./catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "parent",
+      "href": "./catalog.json",
+      "type": "application/json"
+    }
+  ],
+  "assets": {
+    "image": {
+      "href": "./Sepolia_CHIME_Thermopolis_v2_COG.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "roles": [
+        "data"
+      ]
+    }
+  }
+}
