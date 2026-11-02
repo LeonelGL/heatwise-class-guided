@@ -22,5 +22,11 @@ secrets.json
 *.log
 .DS_Store
 
-# Real reference inputs are intentionally tracked under examples/resources/ and examples/sepolia/.
-# Never commit unrelated local imagery or spectra without provenance review.
+# Only the reviewed reference datasets and their STAC descriptors may be tracked.
+# Other local or experimental resources in those directories remain ignored.
+examples/resources/*
+!examples/resources/GUSL_spectra_by_material_headers.xlsx
+examples/sepolia/*
+!examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif
+!examples/sepolia/catalog.json
+!examples/sepolia/item.json
