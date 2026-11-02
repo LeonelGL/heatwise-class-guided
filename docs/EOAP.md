@@ -1,131 +1,77 @@
-# HEATWISE class-guided v0.3.2 — EO Application Package
+# EO Application Package interface
 
-## Purpose and processing boundary
+The repository provides two separate CWL 1.2 workflows, sharing one Docker
+image. Both expose an output `Directory` called `products`.
 
-This is an independent OGC EO Application Package (EOAP) preprocessor. It
-receives a locally staged, single-item STAC catalog with a CHIME-like COG,
-an externally supplied GUSL spectral library (XLSX), a configuration file,
-and optionally a text file of original sensor band wavelengths (micrometers).
+## 1. Class-guided preprocessing
 
-Processing stages: finite-band screening; scene-based PCA/PPI candidate extraction;
-GUSL interpolation; class-guided FULL SAM/MBDSA matching; selection of 15
-discriminative bands from FULL endmembers; independent MASK3 matching on the
-15 selected bands; and export of full-length spectral signatures for both
-selection modes.
+**Workflow:** `cwl/workflow.cwl`  
+**Tool:** `cwl/preprocess.cwl`  
+**Entrypoint:** `/app/class_guided_processor.py`
 
-## Scientific products and metadata
+| Input | CWL type | Description |
+| --- | --- | --- |
+| `input_catalog` | Directory | Single-item STAC catalog with local COG asset |
+| `gusl` | File | GUSL workbook |
+| `config` | File | JSON/YAML processing configuration |
+| `wavelengths` | File? | Optional input wavelengths in µm |
 
-- selected_endmembers_FULL.xlsx — FULL-selected endmember spectra, retaining
-  all usable scene wavelengths (124 in the Sepolia v2 reference run).
-- selected_endmembers_MASK3.xlsx — independently MASK3-selected signatures,
-  retaining the same complete usable wavelength grid.
-- selected_endmembers.xlsx — exact compatibility alias of FULL for the unchanged
-  ESA HySUPP/FCLS input contract.
-- selected_bands.json — 15 selected bands, indices, and selection configuration.
-- mask3_matching_bands.json — the 15 wavelengths actually used by MASK3.
+The output Directory includes FULL/MASK3 endmember XLSX, selected-band JSON,
+mode-specific diagnostics, run summary and STAC `catalog.json`/`item.json`.
+No image resampling, FCLS fitting or abundance mapping occurs.
 
-Both modes have separate diagnostic files, fallback provenance and quality flags.
-run_summary.json, effective_config.json, catalog.json and item.json provide
-provenance and STAC stage-out metadata. The workflow returns one output
-Directory containing these assets; STAC links to files using relative paths.
+The included real-data example is `examples/job_sepolia.yml`, which uses
+`examples/sepolia/`, `examples/resources/GUSL_spectra_by_material_headers.xlsx`
+and `examples/config_sepolia_report.json`.
 
-No FCLS is run in this EOAP. The selected-band list is NOT supplied to FCLS.
-No reduced-band raster, abundance map, classification map, or MAT file is
-generated. This preprocessor cannot independently verify a material's identity.
-Fallback matches are explicitly provisional.
+```bash
+docker build -t heatwise/class-guided:0.3.2 .
+python -m cwltool --outdir results/sepolia-cwl \
+  cwl/workflow.cwl examples/job_sepolia.yml
+```
 
-## Executable package and stage-in
+The output `selected_endmembers.xlsx` duplicates
+`selected_endmembers_FULL.xlsx` for FCLS compatibility. The 15-band
+selection does **not** imply that downstream FCLS must use only 15 bands.
 
-- cwl/workflow.cwl — CWL 1.2 Workflow with four typed inputs and one output
-  Directory. References the sibling cwl/preprocess.cwl.
-- cwl/preprocess.cwl — CommandLineTool with one DockerRequirement, executing
-  /app/class_guided_processor.py inside the image (without an external script).
-- cwl/local/* — no-Docker local development equivalents.
-- Dockerfile — Python 3.11 and pinned dependencies.
-- tools/validate_outputs.py — validates the dual exports, STAC links, band
-  indices and absence of reduced-raster/unmixing products.
+## 2. Material aggregation after external FCLS
 
-The repository bundles the actual 250-band Sepolia v2 CHIME-like example
-under `examples/sepolia/` (COG + STAC catalog) and the GUSL reference library
-under `examples/resources/`. A real CWL job is provided at
-`examples/job_sepolia.yml`. On a checkout, cwltool stages these repository
-inputs via the usual CWL Directory and File ports; the Docker image itself
-contains no scientific data. The same EOAP still accepts independent inputs
-from other cities. Source-code licensing and third-party dataset reuse
-conditions must be assessed separately (see NOTICE.md).
+**Workflow:** `cwl/material_workflow.cwl`  
+**Tool:** `cwl/material_postprocess.cwl`  
+**Entrypoint:** `/app/aggregate_fcls_classes.py`
 
-## Version-fixed delivery
+| Input | CWL type | Description |
+| --- | --- | --- |
+| `fcls_outputs` | Directory | External FCLS STAC output with abundance asset |
+| `selected_endmembers` | File | The FULL or MASK3 XLSX used by FCLS |
+| `class_mapping` | File | `diagnostics/endmember_classes.json` from the same run |
+| `mode` | string | `FULL` or `MASK3` |
+| `fcls_class_names` | File | FCLS class-name JSON |
+| `fcls_metadata` | File | FCLS run-metadata JSON |
+| `acquisition_datetime` | string | Verified timestamp with timezone |
+| `output_prefix` | string | Optional, defaults to `HEATWISE_FCLS` |
+| `min_abundance` | float? | Optional threshold after aggregation |
 
-ESA requires versioned EOAP releases, with non-moving Docker image references.
-tools/prepare_release.py creates release-specific versions of BOTH CWLs;
-cwltool --pack makes one standalone heatwise_class_guided.cwl.
-.github/workflows/release.yml runs for version tags such as v0.3.2 and:
-- checks a nonempty approved LICENSE and the presence of bundled reference inputs;
-- regenerates/validates the release CWLs, runs tests and a Docker/CWL synthetic
-  smoke test with the release image;
-- publishes the version-specific image to ghcr.io/<owner>/<repo>:<version>;
-- creates a GitHub Release attaching the packed CWL and original paired CWLs.
+Outputs include class-summed abundance and material Top-1 COGs, label/provenance
+JSON, and a STAC catalog with a WGS84 footprint.
 
-Source CWLs stay unchanged and may retain a local development Docker tag.
-The release CWL uses the published image with an exact immutable *version
-name*. Protect tags and image tags from reassignment as a project policy.
+This is **postprocessing only**. The official FCLS code remains external;
+it must be run separately on the original image with the matching endmember
+XLSX. See [Material aggregation](FCLS_MATERIAL_AGGREGATION.md) for the CLI
+and CWL test example.
 
-The software licensing decision is pending; the existence of an open-source
-publication policy is not a license grant. No formal release may proceed
-without a project-authorized LICENSE.
+## Docker, tests and release
 
-## Interoperability and evidence
+The Dockerfile installs pinned Python 3.11 runtime dependencies and both
+Python entrypoints, but not the GUSL workbook or Sepolia COG; CWL stages these
+from the repository or another data source.
 
-Automated synthetic and dual-mode CI tests passed for the v0.3.2 processing
-chain, and Sepolia real-scene preflight passed on 2026-10-28:
-https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40743012798
+`cwl/local/` contains optional no-Docker variants of the class-guided
+preprocessor. The validation workflow runs Python tests and synthetic
+Docker/CWL tests for both processors; it also checks the identity and metadata
+of the bundled real data.
 
-The separate CWL packaging test is executed by the pull-request CI. These
-tests do not establish ESA-platform certification or a full downstream FCLS
-run. A new real-scene experiment can now use the tracked STAC catalog and
-GUSL XLSX without downloading/staging them manually.
-
-The original image must be provided independently, together with either FULL
-or MASK3 endmember XLSX, to the official HySUPP/FCLS processor:
-https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing
-
-## Distribution minimization (development vs runtime)
-
-The production container installs a Python 3.11 **runtime-only** lock,
-`requirements-runtime-lock-python311.txt`, resolved in a clean virtualenv.
-Development/test and CWL runner dependencies remain in the separate
-`requirements-lock-python311.txt` used on GitHub Actions runners.
-Reference algorithms are retained for automated parity tests, not included
-in the Docker context. The repository contains the compact synthetic COG/STAC fixture **and** the
-original Sepolia/GUSL scientific reference inputs. 250-band synthetic
-fixtures are generated on demand. Lightweight CI checks the bundled
-real-data identity and STAC/libraries; the expensive full real processing
-is a user-invoked job (not a default pull-request gate).
-
-
-## Independently packaged post-FCLS material EOAP (optional)
-
-The same source repository and Docker image now also include a second
-entrypoint, `/app/aggregate_fcls_classes.py`, with its own Workflow
-`cwl/material_workflow.cwl` and CommandLineTool
-`cwl/material_postprocess.cwl`. This does **not** change the original
-preprocessor's CWL inputs, outputs or scientific algorithm.
-
-The material EOAP receives the **STAC Directory** returned by the external
-official FCLS processor, the exact class-guided endmember XLSX used in that
-external FCLS run, the mode-specific grouping JSON, FCLS class names and run
-metadata as Files, and the **real source acquisition datetime** with explicit
-timezone. It never runs FCLS. It sums replicate abundances by material
-according to `classes_by_mode.FULL` or `classes_by_mode.MASK3` and
-outputs material-abundance and material-level Top-1 georeferenced COGs,
-a source-hash provenance JSON, and a STAC 1.1 catalog with WGS84
-geometry/bbox. Input names/order/mapping must agree.
-
-The two EOAPs are version-pinned **independently** in the prepared release,
-using one common Docker image and two separate packed CWL documents.
-The validation workflow creates synthetic FCLS-shaped STAC inputs and runs
-the postprocessor CWL inside Docker. It does not run or test ESA FCLS.
-
-See `docs/FCLS_MATERIAL_AGGREGATION.md`. The end-to-end scientific
-interoperability with official FCLS and historical ground truth remain
-unverified by explicit project decision. No new software license is chosen.
+For a fixed-version release, `tools/prepare_release.py` generates separate
+version-pinned CWL pairs and packed CWLs. The formal publishing workflow
+requires a software `LICENSE` before pushing a Docker image or creating a
+GitHub Release; see [Release procedure](RELEASE.md).

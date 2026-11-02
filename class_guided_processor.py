@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """HEATWISE scene-specific class-guided processor, Python 3.11.
-Scientific kernels ported from the three supplied scripts; see docs/CHANGES.md.
+Scientific reference implementations are retained in reference/; see docs/METHOD.md.
 No runtime dependency on those scripts and no subprocess scientific stages.
 Select endmembers twice (FULL / MASK3), always exporting complete usable spectra.
 """
