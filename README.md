@@ -1,110 +1,63 @@
-# HEATWISE class-guided preprocessing + optional material Top-1 mapping
+# HEATWISE class-guided urban material mapping
 
-**Version 0.3.2 — dual FULL / MASK3 class-guided endmember selection**
+This repository contains two independent Python/CWL processors:
 
-This repository packages **two independent EOAP tools** sharing one Docker image.
-The class-guided preprocessor extracts scene-specific FULL/MASK3 endmember
-libraries and selects 15 discriminative wavelengths. The optional postprocessor
-takes the **external, unmodified official ESA FCLS abundance products**,
-aggregates replicate endmembers into material abundances (for example, three
-asphalts and three concretes), and creates a material-level Top-1 COG and
-a valid STAC catalog. **Neither tool executes FCLS unmixing.**
+1. **Class-guided selection:** extracts candidate spectra from a hyperspectral scene, matches them to the GUSL library, and exports scene-specific endmembers selected using FULL spectra and an optimized 15-band subset (MASK3).
+2. **Material mapping:** groups the endmember abundances produced by the external [HEATWISE HySUPP/FCLS processor](https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing) into material-level abundance maps and a dominant-material (Top-1) map.
 
-## Scientific methodology
+Both processors share a Docker image. **FCLS itself is not included or executed here.**
 
-1. Read an input hyperspectral GeoTIFF/COG with valid wavelength centers,
-   reflectance scale/offset, georeferencing and nodata masks.
-2. Detect usable spectral bands; exclude explicitly configured gaps and bands
-   with inadequate finite-data coverage.
-3. Extract scene-based candidate endmembers using PCA, stratified PPI-like
-   projections, local spectral support, medoid representation and deduplication.
-4. Interpolate configured GUSL spectral-library sheets onto the usable scene
-   wavelengths with PCHIP, without endpoint extrapolation.
-5. **Match candidates to GUSL using FULL spectra**, with SAM/MBDSA and
-   class-guided material selection. Asphalt and concrete may retain multiple
-   scene endmembers; some other material classes are averages of candidates.
-6. Apply a **general class-conditional fallback** to any class in
-   `matching.FINAL_TARGET_CLASSES` that remains unrepresented. It ranks all
-   scene candidates against all GUSL signatures of the missing class using
-   the same FULL spectral comparison matrices. A fallback can relax the
-   requirement that this class be the candidate's global winner, but requires
-   a configurable class-specific SAM ceiling (default 8 degrees), cannot
-   steal candidates used by existing endmembers, and cannot reuse a fallback
-   candidate for multiple classes. A class without a plausible candidate
-   remains unrepresented and is explicitly reported. The recovered spectrum
-   is a scene-derived candidate, not a copied GUSL spectrum. These are
-   provisional material labels, **not independently validated identities**.
-7. Independently optimize 15 discriminative bands from the FULL-selected endmembers.
-8. **Rerun class-guided matching on the original candidate pool using only these 15
-   bands (MASK3)**, including mode-specific quality flags and fallback decisions.
-9. Export separate FULL and MASK3 endmember libraries, both retaining **all usable
-   spectral wavelengths**, not just the 15 matching bands.
+## Processing chain
 
-The default report configuration evaluates 500,000 15-band combinations drawn
-from 100 preselected bands and then recommends 15 wavelengths subject to at least
-0.040 µm spacing. The scene determines the wavelengths dynamically.
+```text
+CHIME-like image + GUSL
+          |
+  class_guided_processor.py
+          |
+  FULL/MASK3 endmembers + selected bands + class mapping
+          |
+  external HySUPP/FCLS (run separately)
+          |
+  per-endmember abundance raster
+          |
+  aggregate_fcls_classes.py
+          |
+  per-material abundances + material Top-1
+```
 
-**Important spectral limitation:** the current FULL SAM/MBDSA kernel uses a
-single global common-finite-band intersection across retained candidates and
-library signatures. `full_metric_bands` can be smaller than the number of
-usable image bands, although final endmember signatures retain the complete
-usable scene grid. This limitation is documented and must be assessed on real
-Sepolia/GUSL inputs.
+The preprocessor uses PCA/PPI-like candidate extraction, spectral screening, PCHIP interpolation of GUSL signatures, SAM/MBDSA matching and class-guided selection. It chooses 15 wavelengths from the FULL endmembers, then independently matches the same scene candidate pool on those bands for MASK3. Both output libraries retain **all usable scene wavelengths**, not just the 15 selected bands. Missing classes can receive provisional fallback candidates subject to a SAM threshold.
 
-FULL matching uses the global set of common finite spectral bands, while MASK3
-uses the 15 selected bands to reassess and reselect endmembers independently.
-The 15-band selection **does not change the already selected FULL endmembers**.
+See [Method](docs/METHOD.md) for algorithm details and configurable parameters.
 
-## Outputs and FCLS interoperability
+## Reference inputs
 
-| Output file | Description |
+The repository includes the original example data:
+
+| Input | Path |
 | --- | --- |
-| `selected_endmembers_FULL.xlsx` | FULL-selected endmember spectra, all usable scene wavelengths. |
-| `selected_endmembers_MASK3.xlsx` | Independently MASK3-selected endmember spectra, all usable scene wavelengths. |
-| `selected_endmembers.xlsx` | Backward-compatible alias identical to the FULL spreadsheet; preserves the existing ESA HySUPP input contract. |
-| `selected_bands.json` | The 15 optimized wavelengths, raster band indices and selection diagnostics. |
-| `mask3_matching_bands.json` | The 15 actual wavelengths and indices used in MASK3 matching. |
+| CHIME-like Sepolia v2, 250 bands | `examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif` |
+| Sepolia input STAC catalog | `examples/sepolia/catalog.json` |
+| GUSL spectral library | `examples/resources/GUSL_spectra_by_material_headers.xlsx` |
+| Sepolia processing configuration | `examples/config_sepolia_report.json` |
+| Sepolia CWL job | `examples/job_sepolia.yml` |
 
-All endmember spreadsheets contain a first wavelength column (`wavelength_um`)
-and one reflectance column per selected endmember. These are **scene-derived
-candidate signatures**, not direct exports of GUSL spectra. Some classes have
-multiple endmembers. Fallback class identities are explicitly marked
-provisional in the diagnostics.
+The GUSL reader uses the `BRUSSELS_APEX_GENLIB` and `DLR` worksheets by default. `GUSL_catalog_all.csv` is not required by the current processor. The Sepolia acquisition **date** is 2009-07-18; an exact acquisition time has not been established. File identities and source commits are recorded in [Reference data](docs/REFERENCE_DATA.json).
 
-Additional `diagnostics/` files, `run_summary.json`, `effective_config.json`,
-and STAC `catalog.json` / `item.json` provide reproducibility information.
-The **class-guided preprocessing command** does not create a reduced-band raster,
-abundance maps, classification maps, or a `.mat` file. It does not modify
-the source image. A separate optional downstream tool can generate material
-abundance and Top-1 rasters *after* official FCLS has been run.
+## Install
 
-The separate official [ESA-Heatwise HySUPP unmixing
-processor](https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing) accepts
-the original image and an endmember XLSX. FULL and MASK3 may each be
-evaluated as **alternative endmember inputs**. The selected-band JSON is
-diagnostic, **not a required FCLS input**. A spectral alignment preflight
-has been performed; actual end-to-end FCLS operation and scientific
-accuracy remain to be independently verified.
-
-## Installation
-
-Python 3.11 is recommended. For local development, use the full pinned **development/CI** lock:
+Use Python 3.11:
 
 ```bash
 python3.11 -m venv .venv
-# Linux/macOS:
 source .venv/bin/activate
-# Windows PowerShell:
-# .venv\Scripts\Activate.ps1
 python -m pip install -r requirements-lock-python311.txt
 ```
 
-For a lightweight **runtime-only** installation, use `requirements-runtime-lock-python311.txt`. Docker installs only that runtime lock; it does not include `pytest`, `cwltool` or `rio-cogeo`. The CWL runner is installed on the **host**, not inside the scientific container.
+On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1`. For runtime-only use, install `requirements-runtime-lock-python311.txt`.
 
-## Usage with the real scene
+## Run class-guided on Sepolia
 
-**The real Sepolia v2 CHIME-like scene and GUSL spectral workbook are included
-in the repository.** After cloning, run from the repository root:
+Run from the repository root:
 
 ```bash
 python class_guided_processor.py \
@@ -114,7 +67,7 @@ python class_guided_processor.py \
   --output-dir results/sepolia
 ```
 
-Or run the same real inputs through the existing containerized CWL workflow:
+Or use the containerized CWL:
 
 ```bash
 docker build -t heatwise/class-guided:0.3.2 .
@@ -122,219 +75,50 @@ python -m cwltool --outdir results/sepolia-cwl \
   cwl/workflow.cwl examples/job_sepolia.yml
 ```
 
-Both commands use the original **250-band Sepolia input** and the original
-**GUSL Excel library** stored at the referenced paths. The configuration is
-the historical report configuration (20,000 PPI projections, 500,000
-band combinations), so this is a computationally demanding scientific run.
-No additional data download or manual path editing is necessary. The Docker
-image holds code and dependencies; CWL stages the bundled inputs as files.
-To process another city, replace the input STAC Directory and, if needed,
-the GUSL/config entries—do not change the algorithm.
+`cwltool` runs on the host and stages input files into Docker. The supplied Sepolia configuration uses 20,000 random projections and 500,000 band combinations; running it can be computationally demanding. For a new city, substitute its STAC image and configure the processing parameters as appropriate.
 
-For direct `--image` input, set `acquisition_datetime` in the configuration to
-the actual acquisition timestamp **with timezone**, not to processing time.
-The reported Sepolia acquisition **date** is 2009-07-18; the precise acquisition
-time/timezone must be verified rather than guessed.
+### Main preprocessor outputs
 
-If band centers are not in the raster metadata, supply:
+| File | Meaning |
+| --- | --- |
+| `selected_endmembers_FULL.xlsx` | Spectra selected using FULL-band similarity |
+| `selected_endmembers_MASK3.xlsx` | Independently selected spectra using 15-band similarity |
+| `selected_endmembers.xlsx` | Identical compatibility copy of the FULL workbook |
+| `selected_bands.json` | Optimized wavelengths and band indices |
+| `mask3_matching_bands.json` | Actual image bands used for MASK3 matching |
+| `diagnostics/endmember_classes.json` | Endmember-to-material grouping for each selection mode |
+
+The output directory also contains diagnostics, run metadata and a STAC catalog. Endmember workbooks have `wavelength_um` as the first column. **The 15-band list is a selection result, not a requirement to reduce the input image for FCLS.**
+
+## Run material-level Top-1
+
+Run the external HySUPP/FCLS with the original image and **one** of the exported endmember XLSX files. Then run our independent postprocessor on the resulting abundance stack and corresponding FCLS metadata:
 
 ```bash
---wavelengths /data/sepolia_original_wavelengths_um.txt
+python tools/aggregate_fcls_classes.py \
+  --abundances /data/fcls/scene_abundance_stack_COG.tif \
+  --selected-endmembers results/sepolia/selected_endmembers_FULL.xlsx \
+  --class-mapping results/sepolia/diagnostics/endmember_classes.json \
+  --mode FULL \
+  --fcls-class-names /data/fcls/scene_class_names.json \
+  --fcls-metadata /data/fcls/scene_run_metadata.json \
+  --acquisition-datetime YOUR_VERIFIED_ISO8601_DATETIME \
+  --output-dir results/materials \
+  --output-prefix sepolia
 ```
 
-The file must contain one wavelength center in **micrometers** for each
-original image band, in original raster order. Image and endmember wavelengths
-are sorted consistently during processing.
+The `--acquisition-datetime` value must be a verified ISO 8601 timestamp with timezone; do not infer a time from Sepolia's known date. Use `--mode MASK3` only when FCLS used the MASK3 workbook.
 
-To use a different STAC input without duplicating GUSL:
+The postprocessor sums the abundance of all selected endmembers assigned to each material and then selects the dominant material. It writes `*_class_abundances_COG.tif`, `*_material_top1_COG.tif`, a class-label JSON file and STAC metadata. Details, including CWL invocation, are in [Material postprocessing](docs/FCLS_MATERIAL_AGGREGATION.md).
 
-```bash
-python class_guided_processor.py \
-  --input-catalog /data/other_city_stac \
-  --gusl examples/resources/GUSL_spectra_by_material_headers.xlsx \
-  --config examples/config_sepolia_report.json \
-  --output-dir results/other-city
-```
-
-The above configuration reproduces the Sepolia experiment; calibrate scene
-parameters scientifically for new cities.
-
-The STAC catalog must describe one Item with a locally staged COG asset.
-Choose a new or empty output directory.
-
-**GUSL source convention:** the current reader uses the configured
-`BRUSSELS_APEX_GENLIB` and `DLR` sheets from the XLSX. The separate
-`GUSL_catalog_all.csv` is **not yet parsed by this executable**. Its potential
-role in materials mapping must be audited before claiming both resources are
-integrated. Verify sheet names, material prefixes, gap intervals and image
-wavelengths against the real Sepolia inputs.
-
-## Scientific interface with the ESA HEATWISE unmixing package
-
-The external repository
-[ESA-Heatwise/heatwise-hysupp-unmixing](https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing)
-remains **unchanged**. It accepts the original input image and either exported
-endmember table. The independently selected 15-band JSON is **not passed** to
-the official FCLS processor.
-
-Do **not** pass a MASK3 raster, do **not** set a fabricated scale factor, and do
-**not** assume all sensor bands are usable. Spectral alignment, interpolation
-behaviour and radiometric scale must be verified with the actual original
-image and the official FCLS interface before claiming real-scene compatibility.
-
-## Optional downstream FCLS material-level maps
-
-**The second stage is a separately packaged EOAP**, not an automatic step of
-`cwl/workflow.cwl`. The postprocessing CWL is
-`cwl/material_workflow.cwl`; its companion
-`cwl/material_postprocess.cwl` runs the same Docker image with the independent
-`/app/aggregate_fcls_classes.py` entrypoint. Material stage-in uses the
-official FCLS STAC output **Directory**; stage-out creates the two COGs,
-class provenance metadata, and a WGS84-footprinted STAC catalog.
-
-After running the **unchanged official ESA FCLS** with the selected FULL or
-MASK3 XLSX, run `tools/aggregate_fcls_classes.py` using the official FCLS
-abundance GeoTIFF, class-name JSON, run metadata, the **same** class-guided
-endmember XLSX, and `diagnostics/endmember_classes.json`. The tool sums
-replicates (for example, three asphalt and three concrete signatures) by
-material and exports a material-abundance COG and material-level Top-1 COG,
-preserving source georeferencing and nodata. It does **not** rerun FCLS or
-change the official ESA repository. See
-[`docs/FCLS_MATERIAL_AGGREGATION.md`](docs/FCLS_MATERIAL_AGGREGATION.md)
-for exact CLI/CWL commands, FULL/MASK3 matching safeguards, mandatory scene
-acquisition datetime, synthetic package tests, and limitations.
-
-## Synthetic test and EOAP/CWL
+## Tests and packaging
 
 ```bash
-python examples/make_synthetic.py
-python class_guided_processor.py --input-catalog examples/synthetic \
-  --gusl examples/synthetic/gusl_synthetic.xlsx \
-  --config examples/synthetic_config.json \
-  --output-dir results/synthetic
-python tools/validate_outputs.py results/synthetic
 python -m pytest tests -q
 python -m cwltool --validate cwl/workflow.cwl
-python -m cwltool --validate cwl/local/workflow.cwl
+python -m cwltool --validate cwl/material_workflow.cwl
 ```
 
-Build a local image (the tag is not evidence of a published registry image):
+The CI workflow also builds Docker and executes both processors with **synthetic test inputs**. Tests check the bundled real GUSL/Sepolia file identities and metadata, but do not repeat the computationally expensive real-scene workflow or execute official FCLS. The recorded [real Sepolia class-guided run](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40743012798) used these reference inputs.
 
-```bash
-docker build -t heatwise/class-guided:0.3.2 .
-python -m cwltool --outdir results/cwl cwl/workflow.cwl examples/job_synthetic.yml
-python tools/validate_outputs.py results/cwl/results
-```
-
-`cwl/workflow.cwl` is the container workflow; `cwl/local/workflow.cwl`
-runs without Docker. GitHub Actions tests both declarations and runs the
-containerized synthetic workflow. It does not execute official FCLS.
-
-The former generated-output folders are not part of the delivered source tree. They remain recoverable through Git history
-and must **not** be treated as outputs of version 0.3.2.
-
-## Real Sepolia validation and ESA delivery status
-
-Historical validation of the v0.3.2 scientific algorithm passed:
-
-- [Python, Docker/CWL and synthetic validation (run 40742619588)](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40742619588).
-- [Real Sepolia CHIME-like v2 and GUSL FULL/MASK3 preflight (run 40743012798)](https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40743012798).
-
-The latter used the Sepolia-specific configuration with 20,000 random PPI
-projections, up to 1,000 PPI candidates per stratum, 300 maximum final urban
-candidates, and 500,000 sampled combinations of 15 bands. It reported
-250 input image bands, 124 usable output wavelengths, 103 FULL/GUSL
-comparison bands, 15 MASK3 comparison bands, and 9 endmember signatures
-per library. A total of 277 scene candidates entered matching.
-These settings are **not universal defaults**; see
-`examples/config_sepolia_report.json`.
-
-These successful checks establish executable behavior and the **spectral
-FCLS handoff preflight only**. They do not establish independently validated
-material classes, FCLS abundance accuracy, full-system interoperability,
-or ESA acceptance. Earlier independent executions showed changes in some
-FULL candidates with nominally unchanged upstream settings; repeatability
-should be audited before claiming bitwise deterministic results.
-
-The official delivery must meet the EO Application Package (EOAP)
-requirements. In particular, ESA requests a **fixed-version GitHub Release
-with version-specific CWL and Docker image**, rather than reliance on a
-moving `latest` image tag. Hannes Neuschmidt's
-[release workflow example (ESA-Heatwise/heatwise-patch-extraction PR #3)](https://github.com/ESA-Heatwise/heatwise-patch-extraction/pull/3)
-is the intended model. This development repository does **not** yet
-publish an ESA-Heatwise release or a versioned GHCR container.
-
-Before publication, update the remaining CWL and technical reports,
-regenerate `MANIFEST_SHA256.json`, finalize the project-approved software
-license, clarify GUSL/image redistribution permissions, and arrange
-EOAP review and release in the ESA-Heatwise organization.
-
-Additional methodology and output details:
-`docs/DUAL_SELECTION_V032.md`, `docs/GENERAL_CLASS_FALLBACK.md`,
-`docs/EOAP.md`, and `docs/EOAP_READINESS.md`.
-
-## General missing-class fallback configuration
-
-This policy is independent of location and applies uniformly to configured
-material classes. It is enabled by default, and can be overridden from a JSON
-or YAML configuration using:
-
-```yaml
-matching:
-  FALLBACK_ENABLED: true
-  FALLBACK_MAX_SAM_DEG: 8.0
-  FALLBACK_MAX_SAM_BY_CLASS: {}
-```
-
-Optional, methodologically justified per-class maximum angles belong in
-`FALLBACK_MAX_SAM_BY_CLASS` (e.g. `{'material_class': 6.0}`); the key must
-already appear in `FINAL_TARGET_CLASSES`. Changing a threshold is a
-scientific decision, not a way to guarantee a desired label. Disabled:
-`FALLBACK_ENABLED: false`.
-
-Diagnostic `diagnostics/FULL_fallback_report.json` lists the previously
-missing classes, recovered candidates, SAM/MBDSA, competing GUSL signature,
-quality flags and unresolved classes. The same information is summarized in
-`run_summary.json`. If a required class must be present, list it in
-`required_classes` so the run fails when no plausible candidate exists.
-
-**Caution:** Recovered classes may be spectrally confused with another material
-(e.g. asphalt vs terracotta). A fallback never proves a material is present.
-Science-facing reports must distinguish ordinary matches from provisional
-fallback endmembers and verify them independently before ESA delivery.
-
-
-## Repository layout and synthetic fixtures
-
-The runtime component is `class_guided_processor.py`, `requirements.txt` /
-`requirements-runtime-lock-python311.txt`, and the versioned Docker image.
-Production CWL definitions are in `cwl/workflow.cwl` and `cwl/preprocess.cwl`.
-The `tests/` and `reference/` directories are retained for scientific parity
-checks; `cwl/local/` is an optional no-Docker development variant.
-Two GitHub Actions workflows cover validation and versioned releases.
-The release packaging includes **both** CWL pairs and a packed standalone CWL
-for each executable (`heatwise_class_guided.cwl` and
-`heatwise_material_top1.cwl`), with one version-specific GHCR image.
-Release publishing remains **blocked until a project-approved LICENSE is
-provided**; none is chosen here.
-
-Only one small **120-band synthetic STAC fixture** is tracked. The uncompressed
-`scene.tif`, duplicate synthetic GUSL XLSX, and pre-generated 250-band
-fixture are excluded. If you need the 250-band synthetic test, generate it on
-demand, for example:
-
-```bash
-python examples/make_synthetic.py results/synthetic_250 --bands 250
-```
-
-The original real inputs are tracked separately in
-`examples/resources/GUSL_spectra_by_material_headers.xlsx` and
-`examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif` with their STAC
-metadata and exact Git blob provenance. The included
-`examples/job_sepolia.yml` enables the real-data experiment from a clone.
-CI validates the identity, raster metadata, library sheets and references
-without automatically running the expensive 500,000-combination experiment.
-Bundling these scientific inputs does not establish their independent
-third-party redistribution license; see `NOTICE.md`.
-Host versus Docker FULL/MASK3 spectral parity is checked in CI using the
-synthetic fixture. Never interpret synthetic parity as ground-truth accuracy.
+See [EOAP interface](docs/EOAP.md), [Release procedure](docs/RELEASE.md), and [Validation](VALIDATION_REPORT.md). The formal tagged release requires a project-approved software license. Data attribution and redistribution terms are a separate matter; see [NOTICE](NOTICE.md).
