@@ -45,11 +45,14 @@ Fallback matches are explicitly provisional.
 - tools/validate_outputs.py — validates the dual exports, STAC links, band
   indices and absence of reduced-raster/unmixing products.
 
-Inputs must be staged separately for each deployment. The production source
-tree and published container do not embed the original real GUSL library or
-real Sepolia test scene; only synthetic regression fixtures are included.
-Library and image redistribution, where needed, require an independent
-documented rights decision.
+The repository bundles the actual 250-band Sepolia v2 CHIME-like example
+under `examples/sepolia/` (COG + STAC catalog) and the GUSL reference library
+under `examples/resources/`. A real CWL job is provided at
+`examples/job_sepolia.yml`. On a checkout, cwltool stages these repository
+inputs via the usual CWL Directory and File ports; the Docker image itself
+contains no scientific data. The same EOAP still accepts independent inputs
+from other cities. Source-code licensing and third-party dataset reuse
+conditions must be assessed separately (see NOTICE.md).
 
 ## Version-fixed delivery
 
@@ -57,7 +60,7 @@ ESA requires versioned EOAP releases, with non-moving Docker image references.
 tools/prepare_release.py creates release-specific versions of BOTH CWLs;
 cwltool --pack makes one standalone heatwise_class_guided.cwl.
 .github/workflows/release.yml runs for version tags such as v0.3.2 and:
-- checks a nonempty approved LICENSE and the absence of real input datasets;
+- checks a nonempty approved LICENSE and the presence of bundled reference inputs;
 - regenerates/validates the release CWLs, runs tests and a Docker/CWL synthetic
   smoke test with the release image;
 - publishes the version-specific image to ghcr.io/<owner>/<repo>:<version>;
@@ -79,7 +82,8 @@ https://github.com/LeonelGL/heatwise-class-guided/actions/runs/40743012798
 
 The separate CWL packaging test is executed by the pull-request CI. These
 tests do not establish ESA-platform certification or a full downstream FCLS
-run. A new real-scene experiment requires the authorized data to be restaged.
+run. A new real-scene experiment can now use the tracked STAC catalog and
+GUSL XLSX without downloading/staging them manually.
 
 The original image must be provided independently, together with either FULL
 or MASK3 endmember XLSX, to the official HySUPP/FCLS processor:
@@ -92,11 +96,11 @@ The production container installs a Python 3.11 **runtime-only** lock,
 Development/test and CWL runner dependencies remain in the separate
 `requirements-lock-python311.txt` used on GitHub Actions runners.
 Reference algorithms are retained for automated parity tests, not included
-in the Docker context. The repository contains a single synthetic COG and
-STAC catalog; 250-band synthetic fixtures are generated on demand.
-Real-scene and reproducibility workflows that depended on removed licensed
-inputs are not part of automated delivery and their historical successful
-run links remain in the validation report.
+in the Docker context. The repository contains the compact synthetic COG/STAC fixture **and** the
+original Sepolia/GUSL scientific reference inputs. 250-band synthetic
+fixtures are generated on demand. Lightweight CI checks the bundled
+real-data identity and STAC/libraries; the expensive full real processing
+is a user-invoked job (not a default pull-request gate).
 
 
 ## Independently packaged post-FCLS material EOAP (optional)
