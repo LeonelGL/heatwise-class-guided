@@ -68,3 +68,13 @@ jobs:
           python -m cwltool --validate results/release-smoke/cwl/material_workflow.cwl
           python -m cwltool --pack results/release-smoke/cwl/material_workflow.cwl > results/release-smoke/heatwise_material_top1.cwl
           python -m cwltool --validate results/release-smoke/heatwise_material_top1.cwl
+      - name: Exercise both packed release CWLs against exact version-tagged local Docker image
+        run: |
+          docker tag heatwise/class-guided:0.3.2 ghcr.io/leonelgl/heatwise-class-guided:0.3.2
+          python -m cwltool --outdir results/packed-preprocess \
+            results/release-smoke/heatwise_class_guided.cwl examples/job_synthetic.yml
+          python tools/validate_outputs.py results/packed-preprocess/results
+          python -m cwltool --outdir results/packed-material \
+            results/release-smoke/heatwise_material_top1.cwl \
+            results/material-fixture/job_material_synthetic.yml
+          python tools/validate_material_outputs.py results/packed-material/results synthetic
