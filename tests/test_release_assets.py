@@ -105,7 +105,7 @@ def test_no_known_real_inputs_or_credentials_tracked_in_current_tree():
     """Current HEAD only; cannot certify older branches/commits."""
     names = subprocess.check_output(
         ["git", "ls-files", "-z"], cwd=ROOT,
-    ).decode("utf-8").split("\\0")
+    ).decode("utf-8").split("\0")
     forbidden = {
         "GUSL_spectra_by_material_headers.xlsx",
         "GUSL_catalog_all.csv",
