@@ -5,8 +5,6 @@ __pycache__/
 results/
 *.zip
 examples/output*/
-examples/resources/
-examples/sepolia/
 validation/
 examples/synthetic/scene.tif
 examples/synthetic_250/
@@ -24,8 +22,5 @@ secrets.json
 *.log
 .DS_Store
 
-# Project input datasets requiring a separate redistribution decision.
-# Ignore by name as well as by the historical examples/ location.
-GUSL_spectra_by_material_headers.xlsx
-GUSL_catalog_all.csv
-Sepolia_CHIME_Thermopolis_v2_COG.tif
+# Real reference inputs are intentionally tracked under examples/resources/ and examples/sepolia/.
+# Never commit unrelated local imagery or spectra without provenance review.
