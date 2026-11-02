@@ -20,6 +20,15 @@ jobs:
           python-version: '3.11'
       - name: Install pinned dependencies
         run: python -m pip install -r requirements-lock-python311.txt
+      - name: Resolve a clean Python 3.11 runtime-only lock for audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/heatwise-runtime-only
+          /tmp/heatwise-runtime-only/bin/python -m pip install --disable-pip-version-check -r requirements.txt
+          echo '===== BEGIN RUNTIME-ONLY LOCK ====='
+          /tmp/heatwise-runtime-only/bin/python -m pip freeze
+          echo '===== END RUNTIME-ONLY LOCK ====='
       - name: Scientific regression and FULL/MASK3 dual-mode integration tests
         run: python -m pytest tests -q
       - name: Validate container CWL
