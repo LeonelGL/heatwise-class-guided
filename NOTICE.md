@@ -17,11 +17,14 @@ and license text with the responsible project institution before releasing.
 
 ## Third-party test data
 
-The real GUSL spectral library and real Sepolia CHIME-like raster were
-used in earlier local/CI experiments. There is no independently verified
-redistribution permission for either in the reviewed repository. These
-files are excluded from the **current** code delivery tree. Deployment
-requires separately staged, appropriately authorized datasets.
+The Sepolia CHIME-like reference raster and GUSL spectral workbook used in
+the original HEATWISE experiments are now **intentionally included** under
+`examples/sepolia/` and `examples/resources/`, respectively, with their
+STAC input metadata and a reproducible CWL job. This is a scientific
+reproducibility choice requested by the repository owner. It does not
+constitute a verified third-party redistribution license for the GUSL
+library or the Sepolia image. Confirm provenance, attribution and permission
+before transferring these assets to another publishing organization.
 
 Synthetic spectra and synthetic raster fixtures are provided exclusively to
 exercise the code. They are not ground-truth datasets or equivalent to the
@@ -34,6 +37,8 @@ rewrite and assessment of any existing public copies.
 
 ## Release guard
 
-The GitHub Actions release workflow will reject a release when LICENSE is
-missing and when the known real GUSL / Sepolia asset paths are present.
-The Docker image includes code and dependencies, not those real datasets.
+The GitHub Actions release workflow rejects a formal release when the
+project-approved source LICENSE is missing; it now checks that the bundled
+reference data are present. The Docker image intentionally contains code
+and dependencies only; the CWL runner stages the reference inputs as files
+from the checked-out repository.
