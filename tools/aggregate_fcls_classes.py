@@ -110,6 +110,32 @@ def aggregate_array(
 
 
 
+
+def abundance_from_fcls_stac(directory: Path) -> Path:
+    """Stage-in FCLS EO product through catalog.json, not a guessed raster path."""
+    path = Path(directory) / "catalog.json"
+    if not path.is_file():
+        raise ValueError("FCLS output Directory must contain catalog.json")
+    root = pystac.read_file(str(path))
+    items = [root] if isinstance(root, pystac.Item) else list(root.get_all_items())
+    if len(items) != 1:
+        raise ValueError("FCLS output STAC must contain exactly one Item")
+    assets = items[0].assets
+    matched = [(key, asset) for key, asset in assets.items()
+               if key in {"abundance", "abundance_stack"}]
+    if len(matched) != 1:
+        raise ValueError("FCLS STAC needs one abundance asset")
+    href = matched[0][1].get_absolute_href()
+    if not href or "://" in href:
+        raise ValueError("FCLS staged abundance must be a local file")
+    abundance = Path(href)
+    if not abundance.is_file():
+        raise ValueError(f"FCLS abundance asset unavailable: {abundance}")
+    if not abundance.resolve().is_relative_to(Path(directory).resolve()):
+        raise ValueError("FCLS STAC abundance points outside staged directory")
+    return abundance
+
+
 def _parse_acquisition_datetime(value: str | None) -> datetime:
     if not value:
         raise ValueError(
@@ -272,7 +298,9 @@ def process(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--abundances", type=Path, required=True, help="ESA FCLS *_abundance_stack_COG.tif")
+    src_group = parser.add_mutually_exclusive_group(required=True)
+    src_group.add_argument("--abundances", type=Path, help="ESA FCLS *_abundance_stack_COG.tif (local direct CLI)")
+    src_group.add_argument("--fcls-output-dir", type=Path, help="Staged official FCLS Directory containing catalog.json")
     parser.add_argument("--selected-endmembers", type=Path, required=True, help="Exactly the XLSX used by official FCLS")
     parser.add_argument("--class-mapping", type=Path, required=True, help="class-guided diagnostics/endmember_classes.json")
     parser.add_argument("--mode", required=True, choices=("FULL", "MASK3"))
@@ -285,8 +313,9 @@ def main() -> None:
     parser.add_argument("--min-abundance", type=float, default=None,
                         help="Override official FCLS threshold for aggregated-class Top-1")
     args = parser.parse_args()
+    abundances = abundance_from_fcls_stac(args.fcls_output_dir) if args.fcls_output_dir else args.abundances
     print(json.dumps(process(
-        args.abundances, args.selected_endmembers, args.class_mapping, args.mode,
+        abundances, args.selected_endmembers, args.class_mapping, args.mode,
         args.fcls_class_names, args.fcls_metadata, args.output_dir,
         args.output_prefix, args.min_abundance, args.acquisition_datetime,
     ), indent=2))
