@@ -8,13 +8,17 @@ its class mapping, and official FCLS provenance metadata.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import rasterio
+import pystac
 from rasterio.shutil import copy as rio_copy
+from rasterio.warp import transform_bounds
 
 NODATA_ABUNDANCE = -9999.0
 NODATA_CLASS = 0
@@ -105,6 +109,56 @@ def aggregate_array(
     return material, labels, valid
 
 
+
+def _parse_acquisition_datetime(value: str | None) -> datetime:
+    if not value:
+        raise ValueError(
+            "FCLS metadata has no acquisition time; provide --acquisition-datetime "
+            "as an ISO8601 timestamp with explicit timezone."
+        )
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("Acquisition timestamp must be ISO8601") from exc
+    if dt.tzinfo is None or dt.utcoffset() is None:
+        raise ValueError("Acquisition time must include a timezone")
+    return dt.astimezone(timezone.utc)
+
+
+def _sha256(path: Path) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
+
+
+def _write_stac(output_dir: Path, abund: Path, top1: Path, summary: Path,
+                bbox: list[float], acquired: datetime, mode: str) -> None:
+    left, bottom, right, top = bbox
+    geom = {"type": "Polygon", "coordinates": [[
+        [left, bottom], [right, bottom], [right, top],
+        [left, top], [left, bottom],
+    ]]}
+    item = pystac.Item("heatwise-fcls-materials-" + mode.lower(), geom, bbox, acquired,
+                       {"heatwise:material_aggregation": "sum_fcls_endmember_abundances",
+                        "heatwise:selection_mode": mode})
+    for key, path in (("material_abundances", abund), ("material_top1", top1)):
+        item.add_asset(key, pystac.Asset("./" + path.name,
+            media_type="image/tiff; application=geotiff; profile=cloud-optimized",
+            roles=["data"]))
+    item.add_asset("material_classes", pystac.Asset(
+        "./" + summary.name, media_type="application/json", roles=["metadata"]))
+    catalog = pystac.Catalog("heatwise-material-top1",
+                            "Material abundance and Top-1 stage-out after official FCLS.")
+    catalog.add_item(item)
+    catalog.set_self_href(str((output_dir / "catalog.json").resolve()))
+    item.set_self_href(str((output_dir / "item.json").resolve()))
+    catalog.make_all_asset_hrefs_relative()
+    catalog.save(catalog_type=pystac.CatalogType.SELF_CONTAINED)
+    catalog.validate_all()
+
+
 def _write_cog(source_tif: Path, target_cog: Path, categorical: bool) -> None:
     if target_cog.exists():
         raise FileExistsError(f"Output already exists: {target_cog}")
@@ -126,6 +180,7 @@ def process(
     output_dir: Path,
     output_prefix: str,
     min_abundance: float | None = None,
+    acquisition_datetime: str | None = None,
 ) -> dict:
     fcls_names, classes, indices, fcls_meta = validate_contract(
         endmembers_xlsx, class_mapping_path, mode, class_names_json, fcls_metadata_json,
@@ -136,11 +191,12 @@ def process(
         min_abundance = float(fcls_meta.get("fcls", {}).get("min_abundance_for_classification", 0.0))
     if not np.isfinite(min_abundance) or not 0 <= min_abundance <= 1:
         raise ValueError("Classification threshold must be between zero and one")
+    acq_dt = _parse_acquisition_datetime(acquisition_datetime or fcls_meta.get('inputs', {}).get('acquisition_datetime'))
     output_dir.mkdir(parents=True, exist_ok=True)
     abundance_cog = output_dir / f"{output_prefix}_class_abundances_COG.tif"
     top1_cog = output_dir / f"{output_prefix}_material_top1_COG.tif"
     summary_path = output_dir / f"{output_prefix}_material_classes.json"
-    for path in (abundance_cog, top1_cog, summary_path):
+    for path in (abundance_cog, top1_cog, summary_path, output_dir / 'catalog.json', output_dir / 'item.json'):
         if path.exists():
             raise FileExistsError(f"Output already exists: {path}")
 
@@ -148,6 +204,7 @@ def process(
     temp_top1 = output_dir / f".{output_prefix}_material_top1_tmp.tif"
     n_valid = 0
     n_assigned = 0
+    bbox = None
     try:
         with rasterio.open(abundance_path) as src:
             if src.count != len(fcls_names):
@@ -157,6 +214,7 @@ def process(
             named = [src.tags(i).get("class_name") for i in range(1, src.count + 1)]
             if any(n is not None for n in named) and named != fcls_names:
                 raise ValueError("FCLS raster per-band class_name tags disagree with labels")
+            bbox = list(transform_bounds(src.crs, 'EPSG:4326', *src.bounds, densify_pts=21))
             profile = src.profile.copy()
             profile.update(driver="GTiff", count=len(classes), dtype="float32",
                            nodata=NODATA_ABUNDANCE, compress="deflate", predictor=3)
@@ -182,8 +240,16 @@ def process(
         temp_top1.unlink(missing_ok=True)
     summary = {
         "selection_mode": mode,
+        "acquisition_datetime": acq_dt.isoformat(),
         "source_abundance_stack": str(abundance_path),
         "source_fcls_metadata": str(fcls_metadata_json),
+        "input_sha256": {
+            "fcls_abundance_stack": _sha256(abundance_path),
+            "endmember_workbook": _sha256(endmembers_xlsx),
+            "class_mapping": _sha256(class_mapping_path),
+            "fcls_metadata": _sha256(fcls_metadata_json),
+            "fcls_class_names": _sha256(class_names_json),
+        },
         "selected_endmembers": str(endmembers_xlsx),
         "class_mapping_source": str(class_mapping_path),
         "endmember_names": fcls_names,
@@ -200,6 +266,7 @@ def process(
         ],
     }
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    _write_stac(output_dir, abundance_cog, top1_cog, summary_path, bbox, acq_dt, mode)
     return summary
 
 
@@ -213,13 +280,15 @@ def main() -> None:
     parser.add_argument("--fcls-metadata", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--output-prefix", default="HEATWISE_FCLS")
+    parser.add_argument("--acquisition-datetime", default=None,
+                        help="Real scene acquisition ISO8601 time with explicit timezone")
     parser.add_argument("--min-abundance", type=float, default=None,
                         help="Override official FCLS threshold for aggregated-class Top-1")
     args = parser.parse_args()
     print(json.dumps(process(
         args.abundances, args.selected_endmembers, args.class_mapping, args.mode,
         args.fcls_class_names, args.fcls_metadata, args.output_dir,
-        args.output_prefix, args.min_abundance,
+        args.output_prefix, args.min_abundance, args.acquisition_datetime,
     ), indent=2))
 
 
