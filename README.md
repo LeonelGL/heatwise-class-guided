@@ -103,16 +103,33 @@ For a lightweight **runtime-only** installation, use `requirements-runtime-lock-
 
 ## Usage with the real scene
 
-Example with authorized Sepolia and GUSL data **supplied separately** (these
-real data are not part of the current delivery tree):
+**The real Sepolia v2 CHIME-like scene and GUSL spectral workbook are included
+in the repository.** After cloning, run from the repository root:
 
 ```bash
 python class_guided_processor.py \
-  --input-catalog /data/sepolia_stac \
-  --gusl /data/GUSL_spectra_by_material_headers.xlsx \
+  --input-catalog examples/sepolia \
+  --gusl examples/resources/GUSL_spectra_by_material_headers.xlsx \
   --config examples/config_sepolia_report.json \
   --output-dir results/sepolia
 ```
+
+Or run the same real inputs through the existing containerized CWL workflow:
+
+```bash
+docker build -t heatwise/class-guided:0.3.2 .
+python -m cwltool --outdir results/sepolia-cwl \
+  cwl/workflow.cwl examples/job_sepolia.yml
+```
+
+Both commands use the original **250-band Sepolia input** and the original
+**GUSL Excel library** stored at the referenced paths. The configuration is
+the historical report configuration (20,000 PPI projections, 500,000
+band combinations), so this is a computationally demanding scientific run.
+No additional data download or manual path editing is necessary. The Docker
+image holds code and dependencies; CWL stages the bundled inputs as files.
+To process another city, replace the input STAC Directory and, if needed,
+the GUSL/config entries—do not change the algorithm.
 
 For direct `--image` input, set `acquisition_datetime` in the configuration to
 the actual acquisition timestamp **with timezone**, not to processing time.
@@ -129,15 +146,18 @@ The file must contain one wavelength center in **micrometers** for each
 original image band, in original raster order. Image and endmember wavelengths
 are sorted consistently during processing.
 
-To use a staged STAC input:
+To use a different STAC input without duplicating GUSL:
 
 ```bash
 python class_guided_processor.py \
-  --input-catalog /data/staged_catalog \
-  --gusl /data/GUSL_spectra_by_material_headers.xlsx \
+  --input-catalog /data/other_city_stac \
+  --gusl examples/resources/GUSL_spectra_by_material_headers.xlsx \
   --config examples/config_sepolia_report.json \
-  --output-dir results/sepolia
+  --output-dir results/other-city
 ```
+
+The above configuration reproduces the Sepolia experiment; calibrate scene
+parameters scientifically for new cities.
 
 The STAC catalog must describe one Item with a locally staged COG asset.
 Choose a new or empty output directory.
@@ -307,7 +327,14 @@ demand, for example:
 python examples/make_synthetic.py results/synthetic_250 --bands 250
 ```
 
-This does not affect the separate real Sepolia v2 validation evidence. Real
-GUSL and Sepolia rasters remain external, subject to redistribution permission.
+The original real inputs are tracked separately in
+`examples/resources/GUSL_spectra_by_material_headers.xlsx` and
+`examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif` with their STAC
+metadata and exact Git blob provenance. The included
+`examples/job_sepolia.yml` enables the real-data experiment from a clone.
+CI validates the identity, raster metadata, library sheets and references
+without automatically running the expensive 500,000-combination experiment.
+Bundling these scientific inputs does not establish their independent
+third-party redistribution license; see `NOTICE.md`.
 Host versus Docker FULL/MASK3 spectral parity is checked in CI using the
 synthetic fixture. Never interpret synthetic parity as ground-truth accuracy.
