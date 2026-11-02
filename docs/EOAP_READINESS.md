@@ -11,8 +11,8 @@ This is a technical delivery checklist, **not ESA certification**.
 | Docker | Container build and synthetic CWL execution passed | Publish tag-specific image on final organization |
 | CWL | Workflow and CommandLineTool; packaged Python; self-contained release CWL generated and validated | Final versioned release in ESA organization |
 | GitHub releases | Automated version-pinned workflow prepared | Requires approved LICENSE and final tag |
-| Real Sepolia v2 | 250-band scene and GUSL validated on 2026-10-28 | New runs require externally staged files |
-| Input/licensing rights | No real GUSL/Sepolia assets in current delivery tree; restrictions documented | Explicit source-code license and third-party data permissions |
+| Real Sepolia v2 | 250-band scene, STAC and GUSL included at documented repository paths; historical run 2026-10-28 | Scientific reruns still require compute time and cross-run validation |
+| Input/licensing rights | Real GUSL/Sepolia assets are intentionally bundled for reproducibility | Explicit source-code license and confirmation of third-party data reuse terms remain pending |
 | Provenance | Original algorithm reference scripts retained; SHA-256 manifest with CI checking | Update after any final source changes |
 | FCLS handoff | Spectral interface preflight completed | Run actual downstream HySUPP FCLS separately |
 | Reproducibility | Input hashes, configurable seed and diagnostics | Investigate cross-run candidate variations before claims of exact numerical reproducibility |
@@ -45,8 +45,9 @@ The precise Sepolia acquisition time/timezone is not inferred from its date.
    holder(s), and add the corresponding LICENSE. Hannes asked that every
    open-source software deliverable include one, but did not select a license
    for this processor.
-2. Confirm redistribution conditions for the real GUSL spectral library and
-   mimicked Sepolia inputs. These are not included in the current source tree.
+2. Confirm attribution and redistribution conditions for the real GUSL
+   spectral library and mimicked Sepolia inputs. These are now intentionally
+   included in the source tree, without an independently verified data license.
 3. Decide the final version number and target repository with the project
    maintainers. No formal release or container publication has occurred.
 

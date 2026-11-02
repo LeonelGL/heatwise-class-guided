@@ -101,24 +101,24 @@ def test_release_workflow_executes_one_packed_cwl_per_step():
     }.issubset(assets)
 
 
-def test_no_known_real_inputs_or_credentials_tracked_in_current_tree():
-    """Current HEAD only; cannot certify older branches/commits."""
+def test_bundled_reference_data_and_no_tracked_credentials():
+    """Sepolia/GUSL are intentionally bundled; credentials still forbidden."""
     names = subprocess.check_output(
         ["git", "ls-files", "-z"], cwd=ROOT,
     ).decode("utf-8").split("\0")
-    forbidden = {
-        "GUSL_spectra_by_material_headers.xlsx",
-        "GUSL_catalog_all.csv",
-        "Sepolia_CHIME_Thermopolis_v2_COG.tif",
-        "credentials.json",
-        "secrets.json",
+    required = {
+        "examples/resources/GUSL_spectra_by_material_headers.xlsx",
+        "examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif",
+        "examples/sepolia/item.json",
+        "examples/sepolia/catalog.json",
+        "examples/job_sepolia.yml",
     }
-    bad = [
+    assert required.issubset(set(names)), "Bundled reference inputs missing"
+    forbidden = [
         name for name in names if name and (
-            any(seg in ("examples/resources", "examples/sepolia") for seg in [name.rsplit("/",1)[0]])
-            or Path(name).name in forbidden
+            Path(name).name in {"credentials.json", "secrets.json"}
             or Path(name).name.startswith(".env")
-            or Path(name).suffix in {".pem", ".p12", ".pfx", ".key"}
+            or Path(name).suffix.lower() in {".pem", ".p12", ".pfx", ".key"}
         )
     ]
-    assert not bad, f"Sensitive or rights-unverified tracked files: {bad}"
+    assert not forbidden, f"Credential file tracked: {forbidden}"

@@ -48,19 +48,22 @@ The pull-request validation workflow performs these checks automatically.
 
 ## Data and licensing requirements
 
-The source branch excludes real Sepolia and GUSL assets. Only synthetic fixtures
-may be committed without additional redistribution review. The release
-workflow checks both an approved LICENSE and that the known real-data paths
-are absent. The software reuse record must name the selected source license.
+The source tree intentionally includes the original Sepolia CHIME-like COG
+and the actual GUSL XLSX for a reproducible example. The release workflow
+checks the presence of both reference inputs and a nonempty project-approved
+software LICENSE. The software reuse record must name the selected source
+license. Confirm separately the licensing/attribution permissions associated
+with scientific data; including data does not automatically license it.
 
-The release container is not a dataset distribution mechanism. Inputs are
-supplied separately by the EOAP runner, subject to their own licenses.
+The Docker image itself remains code-only and does not duplicate the scientific
+datasets; cwltool stages the input files from the checked-out repository, as
+specified by `examples/job_sepolia.yml`.
 
 ## Before creating the first formal ESA tag
 
-- Obtain authorization for the source-code LICENSE and confirm whether the
-  actual Sepolia image and real GUSL XLSX may be redistributed. The current
-  delivery tree excludes them pending that decision.
+- Obtain authorization for the source-code LICENSE and confirm the
+  redistribution and attribution terms of the now-bundled actual Sepolia
+  image and GUSL XLSX before transferring publication responsibility.
 - Review the repository and CWL input/output contract with Hannes.
 - Move or mirror the approved final code into ESA-Heatwise, as agreed with
   the project team. The workflow automatically publishes to the namespace
@@ -95,10 +98,11 @@ specific image versions of both components.
 `Dockerfile` installs `requirements-runtime-lock-python311.txt`, which
 excludes the CWL runner, test framework and scientific-audit utilities.
 GitHub Actions uses `requirements-lock-python311.txt` for development.
-The official synthetic test fixture contains a COG, STAC metadata and an
-XLSX library in `examples/synthetic/`; it never contains real GUSL data.
-The legacy real-data CI workflows and duplicate test rasters are intentionally
-excluded from the EOAP delivery tree.
+The synthetic CI fixture contains a COG, STAC and XLSX under
+`examples/synthetic/`. The real Sepolia STAC/COG and GUSL XLSX are stored
+separately at `examples/sepolia/` and `examples/resources/`. Unit tests
+verify their Git blob hashes, 250-band raster and two GUSL sheets; full
+real-data extraction remains a manually invoked scientific run.
 
 
 ## Additional independent material Top-1 EOAP

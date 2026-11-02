@@ -5,8 +5,6 @@ __pycache__/
 results/
 *.zip
 examples/output*/
-examples/resources/
-examples/sepolia/
 validation/
 examples/synthetic/scene.tif
 examples/synthetic_250/
@@ -24,8 +22,11 @@ secrets.json
 *.log
 .DS_Store
 
-# Project input datasets requiring a separate redistribution decision.
-# Ignore by name as well as by the historical examples/ location.
-GUSL_spectra_by_material_headers.xlsx
-GUSL_catalog_all.csv
-Sepolia_CHIME_Thermopolis_v2_COG.tif
+# Only the reviewed reference datasets and their STAC descriptors may be tracked.
+# Other local or experimental resources in those directories remain ignored.
+examples/resources/*
+!examples/resources/GUSL_spectra_by_material_headers.xlsx
+examples/sepolia/*
+!examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif
+!examples/sepolia/catalog.json
+!examples/sepolia/item.json

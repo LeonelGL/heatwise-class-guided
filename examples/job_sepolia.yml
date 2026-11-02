@@ -1,0 +1,12 @@
+# Reproduce Sepolia v2 using the real inputs tracked in this repository.
+# Paths are relative to this CWL job file (examples/).
+# The output is FULL/MASK3 endmembers plus band-selection products; no FCLS.
+input_catalog:
+  class: Directory
+  path: sepolia
+gusl:
+  class: File
+  path: resources/GUSL_spectra_by_material_headers.xlsx
+config:
+  class: File
+  path: config_sepolia_report.json
