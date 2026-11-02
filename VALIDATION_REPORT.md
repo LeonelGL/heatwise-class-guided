@@ -63,11 +63,12 @@ packs a self-contained CWL using cwltool --pack, and verifies source-file
 checksums. The formal release workflow also executes the final versioned
 CWL with the versioned Docker image **before publishing it**.
 
-Real datasets were removed from the delivery branch until redistribution is
-authorized. They remain accessible to the original author through older Git
-commits; removal in a new commit does **not** purge already published Git
-history. Real-scene tests require authorized stage-in. CI uses synthetic
-fixtures and cannot substitute for real scientific validation.
+The original real Sepolia CHIME-like raster, its STAC catalog and the GUSL
+spectral workbook have been restored **byte-for-byte** to this repository.
+A real CWL job now references these tracked inputs. CI verifies file
+identity, data structure and paths, while the expensive full scene-specific
+run remains optional. A passing CI job cannot substitute for an updated
+scientific accuracy assessment or for official FCLS processing.
 
 ## Detailed scientific limitations
 
