@@ -31,7 +31,7 @@ def create_release_cwls(
     image: str,
     repository_url: str,
 ) -> dict[str, Path]:
-    """Create paired CWL, downloadable copies, and a versioned ZIP archive."""
+    """Create both versioned EOAP CWL pairs, downloadable copies, and a ZIP."""
     match = SEMVER.fullmatch(version)
     if not match:
         raise ValueError("Version must be vMAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH")
@@ -46,21 +46,25 @@ def create_release_cwls(
     destination.mkdir(parents=True, exist_ok=True)
 
     result: dict[str, Path] = {}
-    for filename in ("workflow.cwl", "preprocess.cwl"):
+    for filename in ("workflow.cwl", "preprocess.cwl", "material_workflow.cwl", "material_postprocess.cwl"):
         contents = (source / filename).read_text(encoding="utf-8")
         contents = _replace_one(contents, r"^s:softwareVersion:.*$", f's:softwareVersion: "{normalized}"', filename)
         contents = _replace_one(contents, r"^s:version:.*$", f's:version: "{normalized}"', filename)
         contents = _replace_one(contents, r"^s:codeRepository:.*$", f"s:codeRepository: {repository_url}", filename)
 
         count = len(re.findall(r"^\s*dockerPull:", contents, flags=re.MULTILINE))
-        if filename == "preprocess.cwl":
+        if filename in ("preprocess.cwl", "material_postprocess.cwl"):
             if count != 1:
                 raise ValueError(f"{filename}: expected exactly one dockerPull, found {count}")
             contents = _replace_one(contents, r"^    dockerPull:.*$", f"    dockerPull: {image}", filename)
-            if "/app/class_guided_processor.py" not in contents:
-                raise ValueError("The release tool must call the processor packed in Docker")
-        elif count != 0 or "run: preprocess.cwl" not in contents:
-            raise ValueError("workflow.cwl must reference sibling preprocess.cwl and no direct DockerRequirement")
+            executable = ("/app/class_guided_processor.py"
+                          if filename == "preprocess.cwl" else "/app/aggregate_fcls_classes.py")
+            if executable not in contents:
+                raise ValueError(f"{filename} must call {executable} packed in Docker")
+        else:
+            referenced = "preprocess.cwl" if filename == "workflow.cwl" else "material_postprocess.cwl"
+            if count != 0 or f"run: {referenced}" not in contents:
+                raise ValueError(f"{filename} must reference sibling {referenced} without DockerRequirement")
 
         (destination / filename).write_text(contents, encoding="utf-8")
         # These individual assets can be downloaded together into the same
@@ -70,7 +74,7 @@ def create_release_cwls(
 
     archive = Path(output_dir) / f"heatwise-class-guided-cwl-v{normalized}.zip"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as z:
-        for name in ("workflow.cwl", "preprocess.cwl"):
+        for name in ("workflow.cwl", "preprocess.cwl", "material_workflow.cwl", "material_postprocess.cwl"):
             z.write(destination / name, arcname=f"cwl/{name}")
     result["archive"] = archive
     return result

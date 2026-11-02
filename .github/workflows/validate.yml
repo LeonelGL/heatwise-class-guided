@@ -26,12 +26,23 @@ jobs:
         run: python -m cwltool --validate cwl/workflow.cwl
       - name: Validate local CWL
         run: python -m cwltool --validate cwl/local/workflow.cwl
+      - name: Validate material postprocessing workflow and CommandLineTool
+        run: |
+          python -m cwltool --validate cwl/material_workflow.cwl
+          python -m cwltool --validate cwl/material_postprocess.cwl
       - name: Build FULL/MASK3 dual-mode container
         run: docker build -t heatwise/class-guided:0.3.2 .
       - name: Run containerized CWL on synthetic STAC input
         run: python -m cwltool --outdir results/ci cwl/workflow.cwl examples/job_synthetic.yml
       - name: Validate dual-mode endmembers, optimized bands and STAC
         run: python tools/validate_outputs.py results/ci/results
+      - name: Generate synthetic FCLS-shaped STAC stage-in without running FCLS
+        run: python examples/make_postprocess_fixture.py results/material-fixture
+      - name: Run independent post-FCLS material CWL in same production Docker image
+        run: |
+          python -m cwltool --outdir results/material-ci cwl/material_workflow.cwl \
+            results/material-fixture/job_material_synthetic.yml
+          python tools/validate_material_outputs.py results/material-ci/results synthetic
       - name: Compare host and slim-Docker scientific outputs
         shell: bash
         run: |
@@ -54,3 +65,16 @@ jobs:
           python -m cwltool --validate results/release-smoke/cwl/workflow.cwl
           python -m cwltool --pack results/release-smoke/cwl/workflow.cwl > results/release-smoke/heatwise_class_guided.cwl
           python -m cwltool --validate results/release-smoke/heatwise_class_guided.cwl
+          python -m cwltool --validate results/release-smoke/cwl/material_workflow.cwl
+          python -m cwltool --pack results/release-smoke/cwl/material_workflow.cwl > results/release-smoke/heatwise_material_top1.cwl
+          python -m cwltool --validate results/release-smoke/heatwise_material_top1.cwl
+      - name: Exercise both packed release CWLs against exact version-tagged local Docker image
+        run: |
+          docker tag heatwise/class-guided:0.3.2 ghcr.io/leonelgl/heatwise-class-guided:0.3.2
+          python -m cwltool --outdir results/packed-preprocess \
+            results/release-smoke/heatwise_class_guided.cwl examples/job_synthetic.yml
+          python tools/validate_outputs.py results/packed-preprocess/results
+          python -m cwltool --outdir results/packed-material \
+            results/release-smoke/heatwise_material_top1.cwl \
+            results/material-fixture/job_material_synthetic.yml
+          python tools/validate_material_outputs.py results/packed-material/results synthetic

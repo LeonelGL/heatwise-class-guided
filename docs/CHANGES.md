@@ -1,5 +1,20 @@
 # HEATWISE class-guided — scientific and technical change record
 
+## Unreleased addition to v0.3.2 development branch (2026-11-02)
+
+- Add independent material-aggregation processor for external FCLS abundance
+  COG, summing endmembers by explicitly recorded FULL/MASK3 class mappings.
+- Keep official ESA HySUPP/FCLS code and original class-guided preprocessing
+  algorithm unchanged.
+- Add mode-checked XLSX/metadata inputs, SHA256 source provenance, full COG
+  georeferencing/nodata, STAC 1.1 output, and acquisition-time requirements.
+- Package two separate CWL Workflow/CommandLineTool pairs in one Docker image
+  and two independent version-pinned release CWLs.
+- Add synthetic external-FCLS-shaped CWL/Docker test; no official FCLS run or
+  scientific accuracy verification.
+- No license, official GHCR release, or transfer to ESA organization performed.
+
+
 ## Current scope: version 0.3.2 — dual FULL + MASK3 (2026-10-30)
 
 - FULL and MASK3 independently select scene-derived endmembers from a common

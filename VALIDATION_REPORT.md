@@ -89,3 +89,23 @@ compares both endmember XLSX tables and band selections to the actual Docker/CWL
 outputs (including names, shape, wavelength order, reflectances and indices).
 Legacy real-data workflows requiring absent test assets were removed; the
 archived 2026-10-28 real-scene results remain separately documented.
+
+
+## Independent material-level Top-1 postprocessor (additional scope)
+
+A **second, separately packaged** processor reads externally calculated FCLS
+abundance rasters, sums replicate signatures according to the class-guided
+FULL or MASK3 mapping, and writes per-material abundances and dominant-material
+Top-1 as COGs with STAC output and input-file hashes.
+
+The preprocessor's existing scientific algorithm and CWL are unchanged.
+The new stage has regression tests for grouped abundances, nodata, metadata
+alignment, invalid inputs, georeferencing, spatial STAC and exact acquisition
+timestamp handling. CI executes its Dockerized CWL against **synthetically
+generated FCLS-shaped** STAC inputs. The release generator produces two
+separate version-pinned packed CWLs for the same versioned image.
+
+No test of official FCLS, no actual FCLS-produced Sepolia material abundance
+map, no confirmation of historical classification accuracy and no ESA
+scientific acceptance is asserted. The release gate still requires an approved
+license and rights review.

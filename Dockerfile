@@ -11,5 +11,6 @@ COPY requirements-runtime-lock-python311.txt /app/
 RUN pip install --no-cache-dir -r requirements-runtime-lock-python311.txt && python -m pip check
 RUN python -c "import numpy, scipy, pandas, rasterio, openpyxl, sklearn, shapely, pystac"
 COPY class_guided_processor.py /app/
+COPY tools/aggregate_fcls_classes.py /app/aggregate_fcls_classes.py
 WORKDIR /work
 CMD ["python3", "/app/class_guided_processor.py", "--help"]

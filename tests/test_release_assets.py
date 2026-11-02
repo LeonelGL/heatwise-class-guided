@@ -17,6 +17,8 @@ spec.loader.exec_module(module)
 def test_fixed_version_release_cwls_preserve_original_sources(tmp_path):
     src_main = (ROOT / "cwl" / "workflow.cwl").read_bytes()
     src_tool = (ROOT / "cwl" / "preprocess.cwl").read_bytes()
+    src_material_workflow = (ROOT / "cwl" / "material_workflow.cwl").read_bytes()
+    src_material_tool = (ROOT / "cwl" / "material_postprocess.cwl").read_bytes()
     assets = module.create_release_cwls(
         ROOT, tmp_path / "release", "v0.3.2",
         "ghcr.io/esa-heatwise/heatwise-class-guided:0.3.2",
@@ -24,6 +26,8 @@ def test_fixed_version_release_cwls_preserve_original_sources(tmp_path):
     )
     workflow = assets["workflow.cwl"].read_text(encoding="utf-8")
     processor = assets["preprocess.cwl"].read_text(encoding="utf-8")
+    material_workflow = assets["material_workflow.cwl"].read_text(encoding="utf-8")
+    material_tool = assets["material_postprocess.cwl"].read_text(encoding="utf-8")
     assert "run: preprocess.cwl" in workflow
     assert 's:version: "0.3.2"' in workflow
     assert 's:softwareVersion: "0.3.2"' in processor
@@ -32,10 +36,20 @@ def test_fixed_version_release_cwls_preserve_original_sources(tmp_path):
     assert "heatwise/class-guided:0.3.2" not in processor
     assert "/app/class_guided_processor.py" in processor
     assert (ROOT / "cwl" / "workflow.cwl").read_bytes() == src_main
+    assert "run: material_postprocess.cwl" in material_workflow
+    assert "/app/aggregate_fcls_classes.py" in material_tool
+    assert "dockerPull: ghcr.io/esa-heatwise/heatwise-class-guided:0.3.2" in material_tool
+    assert 's:version: "0.3.2"' in material_workflow
     assert (ROOT / "cwl" / "preprocess.cwl").read_bytes() == src_tool
+    assert (ROOT / "cwl" / "material_workflow.cwl").read_bytes() == src_material_workflow
+    assert (ROOT / "cwl" / "material_postprocess.cwl").read_bytes() == src_material_tool
     with zipfile.ZipFile(assets["archive"]) as z:
-        assert sorted(z.namelist()) == ["cwl/preprocess.cwl", "cwl/workflow.cwl"]
+        assert sorted(z.namelist()) == [
+            "cwl/material_postprocess.cwl", "cwl/material_workflow.cwl",
+            "cwl/preprocess.cwl", "cwl/workflow.cwl",
+        ]
         assert z.read("cwl/preprocess.cwl").decode("utf-8") == processor
+        assert z.read("cwl/material_postprocess.cwl").decode("utf-8") == material_tool
 
 
 @pytest.mark.parametrize(

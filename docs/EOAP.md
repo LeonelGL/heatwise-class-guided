@@ -97,3 +97,31 @@ STAC catalog; 250-band synthetic fixtures are generated on demand.
 Real-scene and reproducibility workflows that depended on removed licensed
 inputs are not part of automated delivery and their historical successful
 run links remain in the validation report.
+
+
+## Independently packaged post-FCLS material EOAP (optional)
+
+The same source repository and Docker image now also include a second
+entrypoint, `/app/aggregate_fcls_classes.py`, with its own Workflow
+`cwl/material_workflow.cwl` and CommandLineTool
+`cwl/material_postprocess.cwl`. This does **not** change the original
+preprocessor's CWL inputs, outputs or scientific algorithm.
+
+The material EOAP receives the **STAC Directory** returned by the external
+official FCLS processor, the exact class-guided endmember XLSX used in that
+external FCLS run, the mode-specific grouping JSON, FCLS class names and run
+metadata as Files, and the **real source acquisition datetime** with explicit
+timezone. It never runs FCLS. It sums replicate abundances by material
+according to `classes_by_mode.FULL` or `classes_by_mode.MASK3` and
+outputs material-abundance and material-level Top-1 georeferenced COGs,
+a source-hash provenance JSON, and a STAC 1.1 catalog with WGS84
+geometry/bbox. Input names/order/mapping must agree.
+
+The two EOAPs are version-pinned **independently** in the prepared release,
+using one common Docker image and two separate packed CWL documents.
+The validation workflow creates synthetic FCLS-shaped STAC inputs and runs
+the postprocessor CWL inside Docker. It does not run or test ESA FCLS.
+
+See `docs/FCLS_MATERIAL_AGGREGATION.md`. The end-to-end scientific
+interoperability with official FCLS and historical ground truth remain
+unverified by explicit project decision. No new software license is chosen.

@@ -1,9 +1,14 @@
-# HEATWISE class-guided endmember and band preprocessor
+# HEATWISE class-guided preprocessing + optional material Top-1 mapping
 
 **Version 0.3.2 — dual FULL / MASK3 class-guided endmember selection**
 
-This repository implements a scene-specific, ground-truth-independent workflow
-for hyperspectral urban material characterization. It exports separately selected FULL and MASK3 endmember libraries and a scene-specific selection of 15 discriminative bands. It **does not perform FCLS unmixing**.
+This repository packages **two independent EOAP tools** sharing one Docker image.
+The class-guided preprocessor extracts scene-specific FULL/MASK3 endmember
+libraries and selects 15 discriminative wavelengths. The optional postprocessor
+takes the **external, unmodified official ESA FCLS abundance products**,
+aggregates replicate endmembers into material abundances (for example, three
+asphalts and three concretes), and creates a material-level Top-1 COG and
+a valid STAC catalog. **Neither tool executes FCLS unmixing.**
 
 ## Scientific methodology
 
@@ -68,8 +73,10 @@ provisional in the diagnostics.
 
 Additional `diagnostics/` files, `run_summary.json`, `effective_config.json`,
 and STAC `catalog.json` / `item.json` provide reproducibility information.
-This program does not create a reduced-band raster, abundance maps,
-classification maps, or a `.mat` file. It does not modify the source image.
+The **class-guided preprocessing command** does not create a reduced-band raster,
+abundance maps, classification maps, or a `.mat` file. It does not modify
+the source image. A separate optional downstream tool can generate material
+abundance and Top-1 rasters *after* official FCLS has been run.
 
 The separate official [ESA-Heatwise HySUPP unmixing
 processor](https://github.com/ESA-Heatwise/heatwise-hysupp-unmixing) accepts
@@ -96,8 +103,8 @@ For a lightweight **runtime-only** installation, use `requirements-runtime-lock-
 
 ## Usage with the real scene
 
-Example using the Sepolia test assets currently in this repository (confirm
-rights to redistribute the real GUSL library before an external release):
+Example with authorized Sepolia and GUSL data **supplied separately** (these
+real data are not part of the current delivery tree):
 
 ```bash
 python class_guided_processor.py \
@@ -154,6 +161,28 @@ Do **not** pass a MASK3 raster, do **not** set a fabricated scale factor, and do
 **not** assume all sensor bands are usable. Spectral alignment, interpolation
 behaviour and radiometric scale must be verified with the actual original
 image and the official FCLS interface before claiming real-scene compatibility.
+
+## Optional downstream FCLS material-level maps
+
+**The second stage is a separately packaged EOAP**, not an automatic step of
+`cwl/workflow.cwl`. The postprocessing CWL is
+`cwl/material_workflow.cwl`; its companion
+`cwl/material_postprocess.cwl` runs the same Docker image with the independent
+`/app/aggregate_fcls_classes.py` entrypoint. Material stage-in uses the
+official FCLS STAC output **Directory**; stage-out creates the two COGs,
+class provenance metadata, and a WGS84-footprinted STAC catalog.
+
+After running the **unchanged official ESA FCLS** with the selected FULL or
+MASK3 XLSX, run `tools/aggregate_fcls_classes.py` using the official FCLS
+abundance GeoTIFF, class-name JSON, run metadata, the **same** class-guided
+endmember XLSX, and `diagnostics/endmember_classes.json`. The tool sums
+replicates (for example, three asphalt and three concrete signatures) by
+material and exports a material-abundance COG and material-level Top-1 COG,
+preserving source georeferencing and nodata. It does **not** rerun FCLS or
+change the official ESA repository. See
+[`docs/FCLS_MATERIAL_AGGREGATION.md`](docs/FCLS_MATERIAL_AGGREGATION.md)
+for exact CLI/CWL commands, FULL/MASK3 matching safeguards, mandatory scene
+acquisition datetime, synthetic package tests, and limitations.
 
 ## Synthetic test and EOAP/CWL
 
@@ -263,6 +292,11 @@ Production CWL definitions are in `cwl/workflow.cwl` and `cwl/preprocess.cwl`.
 The `tests/` and `reference/` directories are retained for scientific parity
 checks; `cwl/local/` is an optional no-Docker development variant.
 Two GitHub Actions workflows cover validation and versioned releases.
+The release packaging includes **both** CWL pairs and a packed standalone CWL
+for each executable (`heatwise_class_guided.cwl` and
+`heatwise_material_top1.cwl`), with one version-specific GHCR image.
+Release publishing remains **blocked until a project-approved LICENSE is
+provided**; none is chosen here.
 
 Only one small **120-band synthetic STAC fixture** is tracked. The uncompressed
 `scene.tif`, duplicate synthetic GUSL XLSX, and pre-generated 250-band

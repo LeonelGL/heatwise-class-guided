@@ -99,3 +99,25 @@ The official synthetic test fixture contains a COG, STAC metadata and an
 XLSX library in `examples/synthetic/`; it never contains real GUSL data.
 The legacy real-data CI workflows and duplicate test rasters are intentionally
 excluded from the EOAP delivery tree.
+
+
+## Additional independent material Top-1 EOAP
+
+The same versioned release now stages **both** CWL pairs:
+`cwl/workflow.cwl` + `cwl/preprocess.cwl`, and
+`cwl/material_workflow.cwl` + `cwl/material_postprocess.cwl`.
+In addition to `heatwise_class_guided.cwl`, the workflow creates and
+validates the separately packed `heatwise_material_top1.cwl`.
+The four original CWL files and the four-file ZIP are attached to the release.
+
+The single versioned Docker image contains **two separate entrypoints**:
+`/app/class_guided_processor.py` for FULL/MASK3 preprocessing and
+`/app/aggregate_fcls_classes.py` for downstream classification from
+externally computed FCLS abundances. No FCLS executable is copied.
+Release smoke tests run each packed CWL independently with synthetic data.
+The postprocessor fixture simulates FCLS-shaped STAC outputs; it does
+not run or validate official FCLS.
+
+Until the project approves and supplies a LICENSE, the release workflow
+deliberately fails at its license gate. No release, license, or rights
+authorization is implied by passing development CI.
