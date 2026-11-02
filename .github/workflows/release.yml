@@ -105,10 +105,7 @@ jobs:
           set -euo pipefail
           python -m cwltool \
             --outdir results/release-ci \
-            release_dist/heatwise_class_guided.cwl
-            release_dist/heatwise_material_top1.cwl
-            release_dist/material_workflow.cwl
-            release_dist/material_postprocess.cwl \
+            release_dist/heatwise_class_guided.cwl \
             examples/job_synthetic.yml
           python tools/validate_outputs.py results/release-ci/results
 
@@ -139,9 +136,13 @@ jobs:
           generate_release_notes: true
           files: |
             release_dist/heatwise_class_guided.cwl
+            release_dist/heatwise_material_top1.cwl
             release_dist/heatwise-class-guided-cwl-*.zip
             release_dist/workflow.cwl
             release_dist/preprocess.cwl
+            release_dist/material_workflow.cwl
+            release_dist/material_postprocess.cwl
+            docs/FCLS_MATERIAL_AGGREGATION.md
             README.md
             NOTICE.md
             LICENSE
