@@ -105,7 +105,7 @@ def test_bundled_reference_data_and_no_tracked_credentials():
     """Sepolia/GUSL are intentionally bundled; credentials still forbidden."""
     names = subprocess.check_output(
         ["git", "ls-files", "-z"], cwd=ROOT,
-    ).decode("utf-8").split("\\0")
+    ).decode("utf-8").split("\0")
     required = {
         "examples/resources/GUSL_spectra_by_material_headers.xlsx",
         "examples/sepolia/Sepolia_CHIME_Thermopolis_v2_COG.tif",
