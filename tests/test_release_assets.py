@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import subprocess
 import zipfile
+
+import yaml
 
 import pytest
 
@@ -66,3 +69,56 @@ def test_rejects_unversioned_and_mismatched_images(tmp_path, version, image):
             ROOT, tmp_path, version, image,
             "https://github.com/ESA-Heatwise/heatwise-class-guided",
         )
+
+
+def test_release_workflow_executes_one_packed_cwl_per_step():
+    """The license-gated release workflow is not exercised by PR CI.
+
+    Check its shell command and assets to catch accidental broken edits.
+    """
+    path = ROOT / ".github" / "workflows" / "release.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    steps = data["jobs"]["release"]["steps"]
+    preprocessing = next(step for step in steps if step.get("name") == "Smoke-test release CWL inside its release Docker image")
+    run = preprocessing["run"]
+    assert "release_dist/heatwise_class_guided.cwl \\\n" in run
+    assert "            examples/job_synthetic.yml" in run or "examples/job_synthetic.yml" in run
+    assert "release_dist/heatwise_material_top1.cwl" not in run
+    # There should be a distinct synthetic test for material classification.
+    separate = next(step for step in steps if step.get("name") == "Smoke-test material postprocessor with synthetic FCLS-shaped STAC input")
+    assert "release_dist/heatwise_material_top1.cwl" in separate["run"]
+    assert "results/material-fixture/job_material_synthetic.yml" in separate["run"]
+    release = next(step for step in steps if step.get("name") == "Create GitHub release with fixed CWL assets")
+    assets = set(release["with"]["files"].split())
+    assert {
+        "release_dist/heatwise_class_guided.cwl",
+        "release_dist/heatwise_material_top1.cwl",
+        "release_dist/workflow.cwl",
+        "release_dist/preprocess.cwl",
+        "release_dist/material_workflow.cwl",
+        "release_dist/material_postprocess.cwl",
+        "README.md", "NOTICE.md", "LICENSE",
+    }.issubset(assets)
+
+
+def test_no_known_real_inputs_or_credentials_tracked_in_current_tree():
+    """Current HEAD only; cannot certify older branches/commits."""
+    names = subprocess.check_output(
+        ["git", "ls-files", "-z"], cwd=ROOT,
+    ).decode("utf-8").split("\\0")
+    forbidden = {
+        "GUSL_spectra_by_material_headers.xlsx",
+        "GUSL_catalog_all.csv",
+        "Sepolia_CHIME_Thermopolis_v2_COG.tif",
+        "credentials.json",
+        "secrets.json",
+    }
+    bad = [
+        name for name in names if name and (
+            any(seg in ("examples/resources", "examples/sepolia") for seg in [name.rsplit("/",1)[0]])
+            or Path(name).name in forbidden
+            or Path(name).name.startswith(".env")
+            or Path(name).suffix in {".pem", ".p12", ".pfx", ".key"}
+        )
+    ]
+    assert not bad, f"Sensitive or rights-unverified tracked files: {bad}"
