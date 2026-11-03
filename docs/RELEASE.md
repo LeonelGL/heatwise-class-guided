@@ -22,7 +22,7 @@ inputs; they do not run the official FCLS processor.
 
 ## Check packaging without publishing
 
-From the repository root, with the development requirements installed:
+From the repository root, with the dependencies in `requirements.txt` installed:
 
 ```bash
 python tools/refresh_manifest_v032.py --check
