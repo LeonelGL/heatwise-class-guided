@@ -62,9 +62,10 @@ and CWL test example.
 
 ## Docker, tests and release
 
-The Dockerfile installs pinned Python 3.11 runtime dependencies and both
-Python entrypoints, but not the GUSL workbook or Sepolia COG; CWL stages these
-from the repository or another data source.
+The Dockerfile installs the same pinned Python 3.11 dependencies from
+`requirements.txt` as local development and CI, plus both Python entrypoints.
+It does not include the GUSL workbook or Sepolia COG; CWL stages these from
+the repository or another data source.
 
 `cwl/local/` contains optional no-Docker variants of the class-guided
 preprocessor. The validation workflow runs Python tests and synthetic

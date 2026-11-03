@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Create or validate a SHA-256 manifest for version-controlled code/documents.
 
-The manifest intentionally excludes external real datasets, generated science
-outputs, binary fixtures and itself. Binary test fixtures are checked through
-functional CI; their individual input digests can be recorded separately.
+The manifest excludes bundled real datasets, generated science outputs,
+binary fixtures and itself. Real input integrity is validated in separate
+tests and recorded in docs/REFERENCE_DATA.json.
 """
 from __future__ import annotations
 
@@ -35,8 +35,6 @@ def source_file(path: str) -> bool:
         ".gitignore", ".dockerignore", "Dockerfile", "NOTICE.md",
         "LICENSE", "README.md", "VALIDATION_REPORT.md",
         "class_guided_processor.py", "config.json", "requirements.txt",
-        "requirements-dev.txt", "requirements-lock-python311.txt",
-        "requirements-runtime-lock-python311.txt",
     }
 
 
