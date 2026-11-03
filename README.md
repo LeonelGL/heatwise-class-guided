@@ -50,10 +50,10 @@ Use Python 3.11:
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-lock-python311.txt
+python -m pip install -r requirements.txt
 ```
 
-On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1`. For runtime-only use, install `requirements-runtime-lock-python311.txt`.
+On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1`. The version-pinned `requirements.txt` is used for local execution, testing, and Docker builds.
 
 ## Run class-guided on Sepolia
 
